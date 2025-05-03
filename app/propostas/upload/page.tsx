@@ -53,9 +53,9 @@ export default function UploadPage() {
             setTimeout(() => {
               router.push("/propostas")
             }, 1500)
-          } else if (checkCount >= 12) {
-            // 60 segundos (12 verificações de 5 segundos)
-            // Timeout após 60 segundos
+          } else if (checkCount >= 24) {
+            // 100 segundos (24 verificações de 5 segundos)
+            // Timeout após 120 segundos
             clearInterval(intervalId!)
             setUploadStatus("error")
 
@@ -306,7 +306,7 @@ export default function UploadPage() {
                     {uploadStatus === "checking" && (
                       <p className="text-sm text-blue-600 dark:text-blue-400 flex items-center">
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verificando registro no sistema... ({checkCount}/12)
+                        Verificando registro no sistema... ({checkCount}/24)
                       </p>
                     )}
                     {uploadStatus === "success" && (
