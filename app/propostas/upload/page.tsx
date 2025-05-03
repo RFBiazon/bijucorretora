@@ -144,7 +144,7 @@ export default function UploadPage() {
       }, 200)
 
       // Enviar para processamento externo
-      const response = await fetch("https://n8n.neosystemsai.com/webhook/pdf's", {
+      const response = await fetch(process.env.NEXT_PUBLIC_WEBHOOK_PROPOSTA_URL || "", {
         method: "POST",
         body: formData,
       })

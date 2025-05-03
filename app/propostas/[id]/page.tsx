@@ -242,15 +242,17 @@ export default function PropostaDetalhesPage() {
           <TabsTrigger value="veiculo">
             <Car className="h-4 w-4 mr-2" />
             Veículo
-          </TabsTrigger>
+          {/*                 
+          </TabsTrigger>            
           <TabsTrigger value="coberturas">
             <Shield className="h-4 w-4 mr-2" />
             Coberturas
-          </TabsTrigger>
+          </TabsTrigger>           
           <TabsTrigger value="assistencias">
             <Phone className="h-4 w-4 mr-2" />
             Assistências
-          </TabsTrigger>
+            */}        
+          </TabsTrigger>            
           <TabsTrigger value="corretor">
             <Building className="h-4 w-4 mr-2" />
             Corretor

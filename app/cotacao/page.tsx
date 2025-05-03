@@ -86,7 +86,7 @@ export default function CotacaoPage() {
         })
       }, 200)
 
-      const response = await fetch(process.env.NEXT_PUBLIC_WEBHOOK_URL || "", {
+      const response = await fetch(process.env.NEXT_PUBLIC_WEBHOOK_COTACAO_URL || "", {
         method: "POST",
         body: formData,
       })
