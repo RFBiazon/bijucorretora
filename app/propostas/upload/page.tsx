@@ -54,7 +54,7 @@ export default function UploadPage() {
               router.push("/propostas")
             }, 1500)
           } else if (checkCount >= 24) {
-            // 100 segundos (24 verificações de 5 segundos)
+            // 120 segundos (24 verificações de 5 segundos)
             // Timeout após 120 segundos
             clearInterval(intervalId!)
             setUploadStatus("error")
