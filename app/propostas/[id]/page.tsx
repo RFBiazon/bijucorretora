@@ -242,17 +242,7 @@ export default function PropostaDetalhesPage() {
           <TabsTrigger value="veiculo">
             <Car className="h-4 w-4 mr-2" />
             Veículo
-          {/*                 
-          </TabsTrigger>            
-          <TabsTrigger value="coberturas">
-            <Shield className="h-4 w-4 mr-2" />
-            Coberturas
-          </TabsTrigger>           
-          <TabsTrigger value="assistencias">
-            <Phone className="h-4 w-4 mr-2" />
-            Assistências
-            */}        
-          </TabsTrigger>            
+          </TabsTrigger>
           <TabsTrigger value="corretor">
             <Building className="h-4 w-4 mr-2" />
             Corretor
@@ -965,6 +955,63 @@ export default function PropostaDetalhesPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="todas" className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i} className="animate-pulse">
+                  <CardHeader className="pb-2">
+                    <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                  </CardContent>
+                  <CardFooter>
+                    <div className="h-9 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : propostasFiltradas.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {propostasFiltradas.map((proposta) => renderPropostaCard(proposta))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                {searchTerm ? (
+                  <>
+                    <Search className="h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">Nenhuma proposta encontrada</h3>
+                    <p className="text-muted-foreground text-center max-w-md mb-6">
+                      Não encontramos propostas correspondentes à sua busca. Tente outros termos.
+                    </p>
+                    <Button variant="outline" onClick={() => setSearchTerm("")}>
+                      Limpar busca
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <FilePlus className="h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">Nenhuma proposta encontrada</h3>
+                    <p className="text-muted-foreground text-center max-w-md mb-6">
+                      Você ainda não tem propostas processadas. Envie um PDF para começar.
+                    </p>
+                    <Button asChild>
+                      <Link href="/propostas/upload">
+                        <FileUpload className="mr-2 h-4 w-4" />
+                        Nova Proposta
+                      </Link>
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

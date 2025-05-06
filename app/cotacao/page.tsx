@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { Copy, Upload, RefreshCw, CheckCircle, FileUp, File, X } from "lucide-react"
+import { Copy, Upload, RefreshCw, CheckCircle, FileUp, File, X, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Toaster } from "@/components/ui/toaster"
@@ -14,12 +14,17 @@ import { v4 as uuidv4 } from "uuid"
 import { extrairNomeSegurado } from "@/utils/extrator-dados"
 import { Progress } from "@/components/ui/progress"
 import { motion, AnimatePresence } from "framer-motion"
+import { supabase } from "@/lib/supabase"
+import { Badge } from "@/components/ui/badge"
+import { extrairSeguradora, extrairValorPremio } from "@/utils/extrator-dados"
 
 interface ResultadoCotacao {
   texto: string
   id?: string
   nome?: string
   nomeSegurado?: string
+  seguradora?: string
+  valorPremio?: number
   data?: string
 }
 
@@ -30,6 +35,7 @@ export default function CotacaoPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [copied, setCopied] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [salvando, setSalvando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -155,29 +161,75 @@ export default function CotacaoPage() {
     }
   }
 
-  const salvarCotacao = () => {
+  const salvarCotacao = async () => {
     if (!resultado || !file) return
 
-    const novaCotacao = {
-      id: uuidv4(),
-      nome: resultado.nomeSegurado || file.name, // Usar nome do segurado ou nome do arquivo como fallback
-      nomeArquivo: file.name,
-      data: new Date().toLocaleDateString("pt-BR"),
-      texto: resultado.texto,
+    try {
+      setSalvando(true)
+      const cotacaoId = uuidv4()
+
+      // Extrair nome do segurado do texto editado
+      const nomeSeguradoAtualizado =
+        extrairNomeSegurado(resultado.texto) || resultado.nomeSegurado || "Segurado não identificado"
+
+      const novaCotacao = {
+        id: cotacaoId,
+        nome: nomeSeguradoAtualizado, // Usar o nome do segurado como nome da cotação
+        nome_arquivo: file.name,
+        data: new Date().toISOString(),
+        texto: resultado.texto, // Usar o texto editado
+        created_at: new Date().toISOString(),
+      }
+
+      // Salvar no Supabase
+      const { error } = await supabase.from("cotacoes").insert(novaCotacao)
+
+      if (error) {
+        throw error
+      }
+
+      toast({
+        title: "Cotação salva",
+        description: `Cotação de ${nomeSeguradoAtualizado} adicionada ao histórico`,
+      })
+    } catch (error) {
+      console.error("Erro ao salvar cotação:", error)
+      toast({
+        title: "Erro",
+        description: "Falha ao salvar a cotação. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setSalvando(false)
     }
-
-    const cotacoesExistentes = JSON.parse(localStorage.getItem("cotacoes") || "[]")
-    const novasCotacoes = [novaCotacao, ...cotacoesExistentes]
-    localStorage.setItem("cotacoes", JSON.stringify(novasCotacoes))
-
-    toast({
-      title: "Cotação salva",
-      description: "A cotação foi adicionada ao histórico",
-    })
   }
 
   const carregarCotacao = (cotacao: any) => {
-    setResultado(cotacao)
+    setResultado({
+      texto: cotacao.texto,
+      nomeSegurado: cotacao.nome, // Usar o nome da cotação como nome do segurado
+    })
+  }
+
+  // Adicione esta função após a função handleCopy
+  const atualizarExtracao = () => {
+    if (!resultado) return
+
+    const nomeSegurado = extrairNomeSegurado(resultado.texto)
+    const seguradora = extrairSeguradora(resultado.texto)
+    const valorPremio = extrairValorPremio(resultado.texto)
+
+    setResultado({
+      ...resultado,
+      nomeSegurado,
+      seguradora,
+      valorPremio,
+    })
+
+    toast({
+      title: "Informações atualizadas",
+      description: "Os dados foram extraídos novamente do texto editado",
+    })
   }
 
   return (
@@ -282,33 +334,85 @@ export default function CotacaoPage() {
 
             {resultado && (
               <div className="mt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold">
-                    {resultado.nomeSegurado ? `Cotação de: ${resultado.nomeSegurado}` : "Texto da Cotação:"}
-                  </h2>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
-                      {copied ? (
-                        <>
-                          <CheckCircle size={16} className="text-green-500" />
-                          Copiado
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={16} />
-                          Copiar
-                        </>
+                <div className="space-y-3">
+                  {resultado.nomeSegurado && (
+                    <div className="flex items-center gap-2 bg-primary/10 p-3 rounded-md">
+                      <User className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="text-sm font-medium">Segurado</p>
+                        <p className="font-semibold">{resultado.nomeSegurado}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-2">
+                      {resultado.seguradora && resultado.seguradora !== "Desconhecida" && (
+                        <Badge variant="outline">{resultado.seguradora}</Badge>
                       )}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={salvarCotacao} className="flex items-center gap-1">
-                      Salvar
-                    </Button>
+                      {resultado.valorPremio && (
+                        <Badge variant="outline">
+                          R$ {resultado.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
+                        {copied ? (
+                          <>
+                            <CheckCircle size={16} className="text-green-500" />
+                            Copiado
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={16} />
+                            Copiar
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={salvarCotacao}
+                        className="flex items-center gap-1"
+                        disabled={salvando}
+                      >
+                        {salvando ? (
+                          <>
+                            <RefreshCw size={16} className="mr-1 animate-spin" />
+                            Salvando...
+                          </>
+                        ) : (
+                          "Salvar"
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={atualizarExtracao}
+                        className="flex items-center gap-1"
+                      >
+                        <RefreshCw size={16} className="mr-1" />
+                        Atualizar dados
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="relative">
-                  <pre className="whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-4 rounded-md border dark:border-gray-700 text-sm overflow-auto max-h-[300px]">
-                    {resultado.texto}
-                  </pre>
+                  <div className="flex justify-between items-center mb-2">
+                    <label htmlFor="texto-cotacao" className="text-sm font-medium">
+                      Texto da Cotação (editável)
+                    </label>
+                    <span className="text-xs text-muted-foreground">
+                      Edite o texto conforme necessário antes de salvar
+                    </span>
+                  </div>
+                  <textarea
+                    id="texto-cotacao"
+                    className="w-full min-h-[400px] whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-4 rounded-md border dark:border-gray-700 text-sm font-mono resize-y"
+                    value={resultado.texto}
+                    onChange={(e) => setResultado({ ...resultado, texto: e.target.value })}
+                  />
                 </div>
                 <Button variant="outline" onClick={resetForm} className="w-full">
                   Nova Consulta

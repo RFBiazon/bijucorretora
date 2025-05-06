@@ -1,87 +1,76 @@
-/**
- * Extrai o nome do segurado do texto da cotação
- * @param texto Texto completo da cotação
- * @returns Nome do segurado ou undefined se não encontrado
- */
-export function extrairNomeSegurado(texto: string): string | undefined {
-  if (!texto) return undefined
+export function extrairNomeSegurado(texto: string): string | null {
+  if (!texto) return null
 
-  // Padrões comuns para encontrar o nome do segurado em cotações
-  const padroes = [
-    /segurado[:\s]+([A-Za-zÀ-ÖØ-öø-ÿ\s]+?)(?:\s*CPF|\s*CNPJ|\s*\d|\s*$)/i,
-    /nome[:\s]+([A-Za-zÀ-ÖØ-öø-ÿ\s]+?)(?:\s*CPF|\s*CNPJ|\s*\d|\s*$)/i,
-    /proponente[:\s]+([A-Za-zÀ-ÖØ-öø-ÿ\s]+?)(?:\s*CPF|\s*CNPJ|\s*\d|\s*$)/i,
-    /cliente[:\s]+([A-Za-zÀ-ÖØ-öø-ÿ\s]+?)(?:\s*CPF|\s*CNPJ|\s*\d|\s*$)/i,
+  // Padrão com emoji
+  const padraoEmoji = /👤\s*Segurado:\s*([^\n]+)/i
+  const matchEmoji = texto.match(padraoEmoji)
+  if (matchEmoji && matchEmoji[1]) {
+    return matchEmoji[1].trim()
+  }
+
+  // Padrão "Segurado:" ou "Nome do Segurado:"
+  const padrao = /(?:Segurado|Nome do Segurado):\s*([^\n]+)/i
+  const match = texto.match(padrao)
+  if (match && match[1]) {
+    return match[1].trim()
+  }
+
+  // Padrão "Segurado" seguido por nome
+  const padraoSegurado = /Segurado[:\s]+([A-ZÀ-Ú\s]+(?:[A-ZÀ-Ú][a-zà-ú]+\s*)+)/
+  const matchSegurado = texto.match(padraoSegurado)
+  if (matchSegurado && matchSegurado[1]) {
+    return matchSegurado[1].trim()
+  }
+
+  return null
+}
+
+export function extrairSeguradora(texto: string): string | null {
+  if (!texto) return null
+
+  const padrao = /(?:Seguradora|Cia):\s*([^\n]+)/i
+  const match = texto.match(padrao)
+  if (match && match[1]) {
+    return match[1].trim()
+  }
+
+  // Tentar encontrar nomes de seguradoras conhecidas
+  const seguradoras = [
+    "Porto Seguro",
+    "Bradesco",
+    "SulAmérica",
+    "Allianz",
+    "Liberty",
+    "HDI",
+    "Tokio Marine",
+    "Azul",
+    "Mapfre",
+    "Sompo",
+    "Zurich",
+    "Itaú",
   ]
 
-  // Tenta cada padrão até encontrar um match
-  for (const padrao of padroes) {
-    const match = texto.match(padrao)
-    if (match && match[1]) {
-      // Limpa o nome encontrado
-      let nome = match[1].trim()
-
-      // Remove múltiplos espaços
-      nome = nome.replace(/\s+/g, " ")
-
-      // Limita o tamanho para evitar nomes muito longos que podem ser falsos positivos
-      if (nome.length > 50) {
-        nome = nome.substring(0, 50) + "..."
-      }
-
-      return nome
+  for (const seguradora of seguradoras) {
+    if (texto.includes(seguradora)) {
+      return seguradora
     }
   }
 
-  return undefined
+  return null
 }
 
-/**
- * Extrai o valor do prêmio do texto da cotação
- * @param texto Texto completo da cotação
- * @returns Valor do prêmio ou undefined se não encontrado
- */
-export function extrairValorPremio(texto: string): number | undefined {
-  if (!texto) return undefined
+export function extrairValorPremio(texto: string): number | null {
+  if (!texto) return null
 
-  // Padrões para encontrar o valor do prêmio
-  const padroes = [/(prêmio|premio|custo total|valor total|total do seguro)[:\s]*R?\$?\s*([\d.,]+)/i, /R\$\s*([\d.,]+)/]
+  // Padrão para valores monetários com "Prêmio" ou "Valor" próximo
+  const padraoPreco = /(?:Prêmio|Valor|Total)[^\d]*R?\$?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i
+  const match = texto.match(padraoPreco)
 
-  // Tenta cada padrão até encontrar um match
-  for (const padrao of padroes) {
-    const match = texto.match(padrao)
-    if (match) {
-      // O segundo grupo de captura contém o valor
-      const valorStr = match[2] || match[1]
-      // Converte para número (formato brasileiro: ponto como separador de milhar, vírgula como decimal)
-      return Number.parseFloat(valorStr.replace(".", "").replace(",", "."))
-    }
+  if (match && match[1]) {
+    // Converter string para número
+    const valorString = match[1].replace(".", "").replace(",", ".")
+    return Number.parseFloat(valorString)
   }
 
-  return undefined
-}
-
-/**
- * Extrai a seguradora do texto da cotação
- * @param texto Texto completo da cotação
- * @returns Nome da seguradora ou "Desconhecida" se não encontrada
- */
-export function extrairSeguradora(texto: string): string {
-  if (!texto) return "Desconhecida"
-
-  const texto_lower = texto.toLowerCase()
-
-  if (texto_lower.includes("porto")) return "Porto Seguro"
-  if (texto_lower.includes("azul")) return "Azul Seguros"
-  if (texto_lower.includes("hdi")) return "HDI Seguros"
-  if (texto_lower.includes("liberty")) return "Liberty"
-  if (texto_lower.includes("allianz")) return "Allianz"
-  if (texto_lower.includes("bradesco")) return "Bradesco"
-  if (texto_lower.includes("tokio") || texto_lower.includes("tókio")) return "Tokio Marine"
-  if (texto_lower.includes("mapfre")) return "Mapfre"
-  if (texto_lower.includes("zurich")) return "Zurich"
-  if (texto_lower.includes("sompo")) return "Sompo"
-  if (texto_lower.includes("suhai")) return "Suhai"
-
-  return "Desconhecida"
+  return null
 }
