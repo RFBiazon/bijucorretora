@@ -6,15 +6,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, FileText, BarChart2, PieChart, TrendingUp, Users, Car, Building2, ArrowDown, ArrowUp, Filter } from "lucide-react"
+import { Download, FileText, TrendingUp, Users, Car, Building2, ArrowDown, ArrowUp, Filter } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import PageTransition from "@/components/PageTransition"
-import * as Recharts from "recharts"
 import { formatarValorMonetario, normalizarProposta } from "@/lib/utils/normalize"
 import { capitalize, capitalizeWords, formatarNomeSeguradora, formatarNomeCorretor } from "@/utils/formatters"
-import { ChartContainer, ChartTooltipContent, ChartLegendContent } from "@/components/ui/chart"
-import { PolarAngleAxis, PolarGrid, Radar, RadarChart } from "recharts"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { motion } from "framer-motion"
 
 interface Proposta {
   id: string
@@ -221,10 +219,15 @@ export default function RelatoriosPage() {
     <ProtectedRoute>
       <PageTransition>
         <div className="container py-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6"
+          >
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
-              <p className="text-muted-foreground">Análise de propostas e cotações</p>
+              <p className="text-muted-foreground">Visualize relatórios e estatísticas</p>
             </div>
             <div className="flex gap-4 mt-4 md:mt-0">
               <Select value={periodo} onValueChange={setPeriodo}>
@@ -251,63 +254,92 @@ export default function RelatoriosPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Cards de resumo */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+          >
             <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Propostas</CardTitle>
+              <CardHeader>
+                <CardTitle>Total de Propostas</CardTitle>
+                <CardDescription>Número total de propostas processadas</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{totalPropostas}</div>
-                <p className="text-xs text-muted-foreground">
-                  {periodo !== "todos" ? `Nos últimos ${periodo === "30dias" ? "30" : "60"} dias` : "Total geral"}
-                </p>
               </CardContent>
             </Card>
+
             <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+              <CardHeader>
+                <CardTitle>Propostas Concluídas</CardTitle>
+                <CardDescription>Propostas processadas com sucesso</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(totalValor)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {periodo !== "todos" ? `Nos últimos ${periodo === "30dias" ? "30" : "60"} dias` : "Total geral"}
-                </p>
+                <div className="text-2xl font-bold">{statusCount["concluido"] || 0}</div>
               </CardContent>
             </Card>
+
             <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Valor Médio</CardTitle>
+              <CardHeader>
+                <CardTitle>Propostas em Processamento</CardTitle>
+                <CardDescription>Propostas sendo processadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(mediaValor)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {periodo !== "todos" ? `Nos últimos ${periodo === "30dias" ? "30" : "60"} dias` : "Total geral"}
-                </p>
+                <div className="text-2xl font-bold">{statusCount["processando"] || 0}</div>
               </CardContent>
             </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="mt-8"
+          >
             <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Seguradoras</CardTitle>
+              <CardHeader>
+                <CardTitle>Propostas por Seguradora</CardTitle>
+                <CardDescription>Distribuição de propostas por seguradora</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{seguradoras.length}</div>
-                <p className="text-xs text-muted-foreground">Total de seguradoras</p>
+                <ul className="space-y-2">
+                  {dadosPorSeguradora.map((item, idx) => (
+                    <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
+                      <span>{formatarNomeSeguradora(item.name)}</span>
+                      <span className="font-bold">{item.value}</span>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mt-8"
+          >
+            <Card className="bg-black dark:bg-black border border-gray-800">
+              <CardHeader>
+                <CardTitle>Propostas por Status</CardTitle>
+                <CardDescription>Distribuição de propostas por status</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {Object.entries(statusCount).map(([status, quantidade]) => (
+                    <li key={status} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
+                      <span className="capitalize">{status}</span>
+                      <span className="font-bold">{quantidade}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {/* Top 3 Seguradoras e Veículos */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
@@ -318,7 +350,7 @@ export default function RelatoriosPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {rankingSeguradoras.map((item, idx) => (
-                    <li key={item.name + '-' + idx} className="flex justify-between items-center">
+                    <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
                       <span>{item.name}</span>
                       <span className="font-bold">{item.value}</span>
                     </li>
@@ -336,7 +368,7 @@ export default function RelatoriosPage() {
               <CardContent>
                 <ul className="space-y-2">
                   {rankingPremioSeguradora.map((item, idx) => (
-                    <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-1 last:border-b-0">
+                    <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
                       <span className="truncate max-w-[60%]">{item.name}</span>
                       <span className="font-bold text-right min-w-[120px]">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                     </li>
@@ -350,26 +382,26 @@ export default function RelatoriosPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
-                <CardTitle>Status das Propostas</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1">
-                  <li><span className="text-green-400">Concluídas:</span> {statusCount["concluido"] || 0}</li>
-                  <li><span className="text-blue-400">Processando:</span> {statusCount["processando"] || 0}</li>
-                  <li><span className="text-red-400">Erro:</span> {statusCount["erro"] || 0}</li>
-                </ul>
-              </CardContent>
-            </Card>
-            <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader>
                 <CardTitle>Resumo de Valores</CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-1">
-                  <li><span className="text-muted-foreground">Maior prêmio:</span> {maiorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</li>
-                  <li><span className="text-muted-foreground">Menor prêmio:</span> {menorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</li>
-                  <li><span className="text-muted-foreground">Média:</span> {mediaValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</li>
-                  <li><span className="text-muted-foreground">Total:</span> {totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</li>
+                <ul className="space-y-2">
+                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span className="text-muted-foreground">Maior prêmio:</span>
+                    <span className="font-bold">{maiorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </li>
+                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span className="text-muted-foreground">Menor prêmio:</span>
+                    <span className="font-bold">{menorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </li>
+                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span className="text-muted-foreground">Média:</span>
+                    <span className="font-bold">{mediaValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </li>
+                  <li className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className="font-bold">{totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </li>
                 </ul>
               </CardContent>
             </Card>

@@ -285,15 +285,15 @@ export default function PropostasPage() {
                 <span className="sr-only">Excluir proposta</span>
               </Button>
               <Button
-                variant="secondary"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 asChild
-                className="rounded-md gap-2 px-4"
+                className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
                 disabled={proposta.status !== "concluido"}
               >
                 <Link href={`/propostas/${proposta.id}`}>
-                  <Eye className="w-4 h-4 mr-1" />
-                  Ver detalhes
+                  <Eye className="h-4 w-4" />
+                  <span className="sr-only">Ver detalhes</span>
                 </Link>
               </Button>
             </div>

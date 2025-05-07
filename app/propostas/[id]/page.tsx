@@ -215,15 +215,31 @@ export default function PropostaDetalhesPage() {
       <PageTransition>
         <div className="container py-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-            <div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.4, 0, 0.2, 1]
+              }}
+            >
               <h1 className="text-3xl font-bold tracking-tight">
                 Proposta {editedProposta.proposta.numero || "#" + proposta.id.substring(0, 8)}
               </h1>
               <p className="text-muted-foreground">
                 {editedProposta.proposta.cia_seguradora || "Seguradora não identificada"}
               </p>
-            </div>
-            <div className="flex items-center gap-4 mt-4 md:mt-0">
+            </motion.div>
+            <motion.div 
+              className="flex items-center gap-4 mt-4 md:mt-0"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.4,
+                delay: 0.1,
+                ease: [0.4, 0, 0.2, 1]
+              }}
+            >
               {isEditing ? (
                 <>
                   <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>
@@ -252,144 +268,177 @@ export default function PropostaDetalhesPage() {
                   <Button onClick={() => setIsEditing(true)}>Editar dados</Button>
                 </>
               )}
-            </div>
+            </motion.div>
           </div>
 
           <Tabs defaultValue="proposta" value={tabAtiva} onValueChange={setTabAtiva}>
-            <TabsList className="mb-6">
-              <TabsTrigger value="proposta">
-                <FileText className="h-4 w-4 mr-2" />
-                Proposta
-              </TabsTrigger>
-              <TabsTrigger value="segurado">
-                <User className="h-4 w-4 mr-2" />
-                Segurado
-              </TabsTrigger>
-              <TabsTrigger value="veiculo">
-                <Car className="h-4 w-4 mr-2" />
-                Veículo
-              </TabsTrigger>
-              <TabsTrigger value="corretor">
-                <Building className="h-4 w-4 mr-2" />
-                Corretor
-              </TabsTrigger>
-              <TabsTrigger value="valores">
-                <CreditCard className="h-4 w-4 mr-2" />
-                Valores
-              </TabsTrigger>
-            </TabsList>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.4,
+                delay: 0.2,
+                ease: [0.4, 0, 0.2, 1]
+              }}
+            >
+              <TabsList className="mb-6">
+                <TabsTrigger value="proposta">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Proposta
+                </TabsTrigger>
+                <TabsTrigger value="segurado">
+                  <User className="h-4 w-4 mr-2" />
+                  Segurado
+                </TabsTrigger>
+                <TabsTrigger value="veiculo">
+                  <Car className="h-4 w-4 mr-2" />
+                  Veículo
+                </TabsTrigger>
+                <TabsTrigger value="corretor">
+                  <Building className="h-4 w-4 mr-2" />
+                  Corretor
+                </TabsTrigger>
+                <TabsTrigger value="valores">
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Valores
+                </TabsTrigger>
+              </TabsList>
+            </motion.div>
 
             <TabsContent value="proposta">
               <AnimatePresence mode="wait">
                 {tabAtiva === "proposta" && (
                   <motion.div
                     key="proposta"
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.25 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Card className="bg-black dark:bg-black border border-gray-800">
-                        <CardHeader>
-                          <CardTitle>Informações Básicas</CardTitle>
-                          <CardDescription>Dados principais da proposta</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid gap-3">
-                            <Label htmlFor="numero">Número da Proposta</Label>
-                            <Input
-                              id="numero"
-                              value={editedProposta.proposta.numero || ""}
-                              onChange={(e) => handleInputChange("proposta", "numero", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="tipo_seguro">Tipo de Seguro</Label>
-                            <Input
-                              id="tipo_seguro"
-                              value={editedProposta.proposta.tipo_seguro || ""}
-                              onChange={(e) => handleInputChange("proposta", "tipo_seguro", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="cia_seguradora">Seguradora</Label>
-                            <Input
-                              id="cia_seguradora"
-                              value={editedProposta.proposta.cia_seguradora || ""}
-                              onChange={(e) => handleInputChange("proposta", "cia_seguradora", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.1,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <Card className="bg-black dark:bg-black border border-gray-800">
+                          <CardHeader>
+                            <CardTitle>Informações Básicas</CardTitle>
+                            <CardDescription>Dados principais da proposta</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
                             <div className="grid gap-3">
-                              <Label htmlFor="vigencia_inicio">Início da Vigência</Label>
+                              <Label htmlFor="numero">Número da Proposta</Label>
                               <Input
-                                id="vigencia_inicio"
-                                value={editedProposta.proposta.vigencia_inicio || ""}
-                                onChange={(e) => handleInputChange("proposta", "vigencia_inicio", e.target.value)}
+                                id="numero"
+                                value={editedProposta.proposta.numero || ""}
+                                onChange={(e) => handleInputChange("proposta", "numero", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="vigencia_fim">Fim da Vigência</Label>
+                              <Label htmlFor="tipo_seguro">Tipo de Seguro</Label>
                               <Input
-                                id="vigencia_fim"
-                                value={editedProposta.proposta.vigencia_fim || ""}
-                                onChange={(e) => handleInputChange("proposta", "vigencia_fim", e.target.value)}
+                                id="tipo_seguro"
+                                value={editedProposta.proposta.tipo_seguro || ""}
+                                onChange={(e) => handleInputChange("proposta", "tipo_seguro", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                            <div className="grid gap-3">
+                              <Label htmlFor="cia_seguradora">Seguradora</Label>
+                              <Input
+                                id="cia_seguradora"
+                                value={editedProposta.proposta.cia_seguradora || ""}
+                                onChange={(e) => handleInputChange("proposta", "cia_seguradora", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="grid gap-3">
+                                <Label htmlFor="vigencia_inicio">Início da Vigência</Label>
+                                <Input
+                                  id="vigencia_inicio"
+                                  value={editedProposta.proposta.vigencia_inicio || ""}
+                                  onChange={(e) => handleInputChange("proposta", "vigencia_inicio", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                              <div className="grid gap-3">
+                                <Label htmlFor="vigencia_fim">Fim da Vigência</Label>
+                                <Input
+                                  id="vigencia_fim"
+                                  value={editedProposta.proposta.vigencia_fim || ""}
+                                  onChange={(e) => handleInputChange("proposta", "vigencia_fim", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
 
-                      <Card className="bg-black dark:bg-black border border-gray-800">
-                        <CardHeader>
-                          <CardTitle>Detalhes Adicionais</CardTitle>
-                          <CardDescription>Informações complementares</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid gap-3">
-                            <Label htmlFor="ramo">Ramo</Label>
-                            <Input
-                              id="ramo"
-                              value={editedProposta.proposta.ramo || ""}
-                              onChange={(e) => handleInputChange("proposta", "ramo", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="apolice">Apólice</Label>
-                            <Input
-                              id="apolice"
-                              value={editedProposta.proposta.apolice || ""}
-                              onChange={(e) => handleInputChange("proposta", "apolice", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="codigo_ci">Código CI</Label>
-                            <Input
-                              id="codigo_ci"
-                              value={editedProposta.proposta.codigo_ci || ""}
-                              onChange={(e) => handleInputChange("proposta", "codigo_ci", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="classe_bonus">Classe Bônus</Label>
-                            <Input
-                              id="classe_bonus"
-                              value={editedProposta.proposta.classe_bonus || ""}
-                              onChange={(e) => handleInputChange("proposta", "classe_bonus", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.2,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <Card className="bg-black dark:bg-black border border-gray-800">
+                          <CardHeader>
+                            <CardTitle>Detalhes Adicionais</CardTitle>
+                            <CardDescription>Informações complementares</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="grid gap-3">
+                              <Label htmlFor="ramo">Ramo</Label>
+                              <Input
+                                id="ramo"
+                                value={editedProposta.proposta.ramo || ""}
+                                onChange={(e) => handleInputChange("proposta", "ramo", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="apolice">Apólice</Label>
+                              <Input
+                                id="apolice"
+                                value={editedProposta.proposta.apolice || ""}
+                                onChange={(e) => handleInputChange("proposta", "apolice", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="codigo_ci">Código CI</Label>
+                              <Input
+                                id="codigo_ci"
+                                value={editedProposta.proposta.codigo_ci || ""}
+                                onChange={(e) => handleInputChange("proposta", "codigo_ci", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="classe_bonus">Classe Bônus</Label>
+                              <Input
+                                id="classe_bonus"
+                                value={editedProposta.proposta.classe_bonus || ""}
+                                onChange={(e) => handleInputChange("proposta", "classe_bonus", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
                     </div>
                   </motion.div>
                 )}
@@ -401,67 +450,88 @@ export default function PropostaDetalhesPage() {
                 {tabAtiva === "segurado" && (
                   <motion.div
                     key="segurado"
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.25 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Card className="bg-black dark:bg-black border border-gray-800">
-                        <CardHeader>
-                          <CardTitle>Dados Pessoais</CardTitle>
-                          <CardDescription>Informações do segurado</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid gap-3">
-                            <Label htmlFor="nome">Nome</Label>
-                            <Input
-                              id="nome"
-                              value={editedProposta.segurado.nome || ""}
-                              onChange={(e) => handleInputChange("segurado", "nome", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="cpf">CPF</Label>
-                            <Input
-                              id="cpf"
-                              value={editedProposta.segurado.cpf || ""}
-                              onChange={(e) => handleInputChange("segurado", "cpf", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="nascimento">Data de Nascimento</Label>
-                            <Input
-                              id="nascimento"
-                              value={editedProposta.segurado.nascimento || ""}
-                              onChange={(e) => handleInputChange("segurado", "nascimento", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="estado_civil">Estado Civil</Label>
-                            <Input
-                              id="estado_civil"
-                              value={editedProposta.segurado.estado_civil || ""}
-                              onChange={(e) => handleInputChange("segurado", "estado_civil", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="profissao">Profissão</Label>
-                            <Input
-                              id="profissao"
-                              value={editedProposta.segurado.profissao || ""}
-                              onChange={(e) => handleInputChange("segurado", "profissao", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.1,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <Card className="bg-black dark:bg-black border border-gray-800">
+                          <CardHeader>
+                            <CardTitle>Dados Pessoais</CardTitle>
+                            <CardDescription>Informações do segurado</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="grid gap-3">
+                              <Label htmlFor="nome">Nome</Label>
+                              <Input
+                                id="nome"
+                                value={editedProposta.segurado.nome || ""}
+                                onChange={(e) => handleInputChange("segurado", "nome", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="cpf">CPF</Label>
+                              <Input
+                                id="cpf"
+                                value={editedProposta.segurado.cpf || ""}
+                                onChange={(e) => handleInputChange("segurado", "cpf", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="nascimento">Data de Nascimento</Label>
+                              <Input
+                                id="nascimento"
+                                value={editedProposta.segurado.nascimento || ""}
+                                onChange={(e) => handleInputChange("segurado", "nascimento", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="estado_civil">Estado Civil</Label>
+                              <Input
+                                id="estado_civil"
+                                value={editedProposta.segurado.estado_civil || ""}
+                                onChange={(e) => handleInputChange("segurado", "estado_civil", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="profissao">Profissão</Label>
+                              <Input
+                                id="profissao"
+                                value={editedProposta.segurado.profissao || ""}
+                                onChange={(e) => handleInputChange("segurado", "profissao", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
 
-                      <div className="space-y-6">
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.2,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
                         <Card className="bg-black dark:bg-black border border-gray-800">
                           <CardHeader>
                             <CardTitle>Contato</CardTitle>
@@ -488,94 +558,104 @@ export default function PropostaDetalhesPage() {
                             </div>
                           </CardContent>
                         </Card>
+                      </motion.div>
+                    </div>
 
-                        <Card className="bg-black dark:bg-black border border-gray-800">
-                          <CardHeader>
-                            <CardTitle>Endereço</CardTitle>
-                            <CardDescription>Localização do segurado</CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{
+                        duration: 0.4,
+                        delay: 0.3,
+                        ease: [0.4, 0, 0.2, 1]
+                      }}
+                    >
+                      <Card className="bg-black dark:bg-black border border-gray-800">
+                        <CardHeader>
+                          <CardTitle>Endereço</CardTitle>
+                          <CardDescription>Localização do segurado</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid gap-3">
+                            <Label htmlFor="logradouro">Logradouro</Label>
+                            <Input
+                              id="logradouro"
+                              value={editedProposta.segurado.endereco.logradouro || ""}
+                              onChange={(e) =>
+                                handleInputChange("segurado", "endereco", e.target.value, "endereco", "logradouro")
+                              }
+                              disabled={!isEditing}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
                             <div className="grid gap-3">
-                              <Label htmlFor="logradouro">Logradouro</Label>
+                              <Label htmlFor="numero">Número</Label>
                               <Input
-                                id="logradouro"
-                                value={editedProposta.segurado.endereco.logradouro || ""}
+                                id="numero"
+                                value={editedProposta.segurado.endereco.numero || ""}
                                 onChange={(e) =>
-                                  handleInputChange("segurado", "endereco", e.target.value, "endereco", "logradouro")
+                                  handleInputChange("segurado", "endereco", e.target.value, "endereco", "numero")
                                 }
                                 disabled={!isEditing}
                               />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="grid gap-3">
-                                <Label htmlFor="numero">Número</Label>
-                                <Input
-                                  id="numero"
-                                  value={editedProposta.segurado.endereco.numero || ""}
-                                  onChange={(e) =>
-                                    handleInputChange("segurado", "endereco", e.target.value, "endereco", "numero")
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </div>
-                              <div className="grid gap-3">
-                                <Label htmlFor="complemento">Complemento</Label>
-                                <Input
-                                  id="complemento"
-                                  value={editedProposta.segurado.endereco.complemento || ""}
-                                  onChange={(e) =>
-                                    handleInputChange("segurado", "endereco", e.target.value, "endereco", "complemento")
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </div>
-                            </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="bairro">Bairro</Label>
+                              <Label htmlFor="complemento">Complemento</Label>
                               <Input
-                                id="bairro"
-                                value={editedProposta.segurado.endereco.bairro || ""}
-                                onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "bairro")}
+                                id="complemento"
+                                value={editedProposta.segurado.endereco.complemento || ""}
+                                onChange={(e) =>
+                                  handleInputChange("segurado", "endereco", e.target.value, "endereco", "complemento")
+                                }
                                 disabled={!isEditing}
                               />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="grid gap-3">
-                                <Label htmlFor="cidade">Cidade</Label>
-                                <Input
-                                  id="cidade"
-                                  value={editedProposta.segurado.endereco.cidade || ""}
-                                  onChange={(e) =>
-                                    handleInputChange("segurado", "endereco", e.target.value, "endereco", "cidade")
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </div>
-                              <div className="grid gap-3">
-                                <Label htmlFor="estado">Estado</Label>
-                                <Input
-                                  id="estado"
-                                  value={editedProposta.segurado.endereco.estado || ""}
-                                  onChange={(e) =>
-                                    handleInputChange("segurado", "endereco", e.target.value, "endereco", "estado")
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </div>
-                            </div>
+                          </div>
+                          <div className="grid gap-3">
+                            <Label htmlFor="bairro">Bairro</Label>
+                            <Input
+                              id="bairro"
+                              value={editedProposta.segurado.endereco.bairro || ""}
+                              onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "bairro")}
+                              disabled={!isEditing}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
                             <div className="grid gap-3">
-                              <Label htmlFor="cep">CEP</Label>
+                              <Label htmlFor="cidade">Cidade</Label>
                               <Input
-                                id="cep"
-                                value={editedProposta.segurado.endereco.cep || ""}
-                                onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cep")}
+                                id="cidade"
+                                value={editedProposta.segurado.endereco.cidade || ""}
+                                onChange={(e) =>
+                                  handleInputChange("segurado", "endereco", e.target.value, "endereco", "cidade")
+                                }
                                 disabled={!isEditing}
                               />
                             </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="estado">Estado</Label>
+                              <Input
+                                id="estado"
+                                value={editedProposta.segurado.endereco.estado || ""}
+                                onChange={(e) =>
+                                  handleInputChange("segurado", "endereco", e.target.value, "endereco", "estado")
+                                }
+                                disabled={!isEditing}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid gap-3">
+                            <Label htmlFor="cep">CEP</Label>
+                            <Input
+                              id="cep"
+                              value={editedProposta.segurado.endereco.cep || ""}
+                              onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cep")}
+                              disabled={!isEditing}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -586,150 +666,173 @@ export default function PropostaDetalhesPage() {
                 {tabAtiva === "veiculo" && (
                   <motion.div
                     key="veiculo"
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.25 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Card className="bg-black dark:bg-black border border-gray-800">
-                        <CardHeader>
-                          <CardTitle>Informações Básicas</CardTitle>
-                          <CardDescription>Dados principais do veículo</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid gap-3">
-                            <Label htmlFor="marca_modelo">Marca/Modelo</Label>
-                            <Input
-                              id="marca_modelo"
-                              value={editedProposta.veiculo.marca_modelo || ""}
-                              onChange={(e) => handleInputChange("veiculo", "marca_modelo", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.1,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <Card className="bg-black dark:bg-black border border-gray-800">
+                          <CardHeader>
+                            <CardTitle>Informações Básicas</CardTitle>
+                            <CardDescription>Dados principais do veículo</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
                             <div className="grid gap-3">
-                              <Label htmlFor="ano_fabricacao">Ano de Fabricação</Label>
+                              <Label htmlFor="marca_modelo">Marca/Modelo</Label>
                               <Input
-                                id="ano_fabricacao"
-                                value={editedProposta.veiculo.ano_fabricacao || ""}
-                                onChange={(e) => handleInputChange("veiculo", "ano_fabricacao", e.target.value)}
+                                id="marca_modelo"
+                                value={editedProposta.veiculo.marca_modelo || ""}
+                                onChange={(e) => handleInputChange("veiculo", "marca_modelo", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="grid gap-3">
+                                <Label htmlFor="ano_fabricacao">Ano de Fabricação</Label>
+                                <Input
+                                  id="ano_fabricacao"
+                                  value={editedProposta.veiculo.ano_fabricacao || ""}
+                                  onChange={(e) => handleInputChange("veiculo", "ano_fabricacao", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                              <div className="grid gap-3">
+                                <Label htmlFor="ano_modelo">Ano do Modelo</Label>
+                                <Input
+                                  id="ano_modelo"
+                                  value={editedProposta.veiculo.ano_modelo || ""}
+                                  onChange={(e) => handleInputChange("veiculo", "ano_modelo", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="placa">Placa</Label>
+                              <Input
+                                id="placa"
+                                value={editedProposta.veiculo.placa || ""}
+                                onChange={(e) => handleInputChange("veiculo", "placa", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="ano_modelo">Ano do Modelo</Label>
+                              <Label htmlFor="chassi">Chassi</Label>
                               <Input
-                                id="ano_modelo"
-                                value={editedProposta.veiculo.ano_modelo || ""}
-                                onChange={(e) => handleInputChange("veiculo", "ano_modelo", e.target.value)}
+                                id="chassi"
+                                value={editedProposta.veiculo.chassi || ""}
+                                onChange={(e) => handleInputChange("veiculo", "chassi", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="placa">Placa</Label>
-                            <Input
-                              id="placa"
-                              value={editedProposta.veiculo.placa || ""}
-                              onChange={(e) => handleInputChange("veiculo", "placa", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="chassi">Chassi</Label>
-                            <Input
-                              id="chassi"
-                              value={editedProposta.veiculo.chassi || ""}
-                              onChange={(e) => handleInputChange("veiculo", "chassi", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="codigo_fipe">Código FIPE</Label>
-                            <Input
-                              id="codigo_fipe"
-                              value={editedProposta.veiculo.codigo_fipe || ""}
-                              onChange={(e) => handleInputChange("veiculo", "codigo_fipe", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
+                            <div className="grid gap-3">
+                              <Label htmlFor="codigo_fipe">Código FIPE</Label>
+                              <Input
+                                id="codigo_fipe"
+                                value={editedProposta.veiculo.codigo_fipe || ""}
+                                onChange={(e) => handleInputChange("veiculo", "codigo_fipe", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
 
-                      <Card className="bg-black dark:bg-black border border-gray-800">
-                        <CardHeader>
-                          <CardTitle>Características</CardTitle>
-                          <CardDescription>Detalhes do veículo</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid gap-3">
-                            <Label htmlFor="combustivel">Combustível</Label>
-                            <Input
-                              id="combustivel"
-                              value={editedProposta.veiculo.combustivel || ""}
-                              onChange={(e) => handleInputChange("veiculo", "combustivel", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="cambio">Câmbio</Label>
-                            <Input
-                              id="cambio"
-                              value={editedProposta.veiculo.cambio || ""}
-                              onChange={(e) => handleInputChange("veiculo", "cambio", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="categoria">Categoria</Label>
-                            <Input
-                              id="categoria"
-                              value={editedProposta.veiculo.categoria || ""}
-                              onChange={(e) => handleInputChange("veiculo", "categoria", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-3">
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.2,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <Card className="bg-black dark:bg-black border border-gray-800">
+                          <CardHeader>
+                            <CardTitle>Características</CardTitle>
+                            <CardDescription>Detalhes do veículo</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
                             <div className="grid gap-3">
-                              <Label htmlFor="kit_gas">Kit Gás</Label>
+                              <Label htmlFor="combustivel">Combustível</Label>
                               <Input
-                                id="kit_gas"
-                                value={editedProposta.veiculo.kit_gas || ""}
-                                onChange={(e) => handleInputChange("veiculo", "kit_gas", e.target.value)}
+                                id="combustivel"
+                                value={editedProposta.veiculo.combustivel || ""}
+                                onChange={(e) => handleInputChange("veiculo", "combustivel", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="blindado">Blindado</Label>
+                              <Label htmlFor="cambio">Câmbio</Label>
                               <Input
-                                id="blindado"
-                                value={editedProposta.veiculo.blindado || ""}
-                                onChange={(e) => handleInputChange("veiculo", "blindado", e.target.value)}
+                                id="cambio"
+                                value={editedProposta.veiculo.cambio || ""}
+                                onChange={(e) => handleInputChange("veiculo", "cambio", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="zero_km">Zero KM</Label>
+                              <Label htmlFor="categoria">Categoria</Label>
                               <Input
-                                id="zero_km"
-                                value={editedProposta.veiculo.zero_km || ""}
-                                onChange={(e) => handleInputChange("veiculo", "zero_km", e.target.value)}
+                                id="categoria"
+                                value={editedProposta.veiculo.categoria || ""}
+                                onChange={(e) => handleInputChange("veiculo", "categoria", e.target.value)}
                                 disabled={!isEditing}
                               />
                             </div>
-                          </div>
-                          <div className="grid gap-3">
-                            <Label htmlFor="finalidade_uso">Finalidade de Uso</Label>
-                            <Input
-                              id="finalidade_uso"
-                              value={editedProposta.veiculo.finalidade_uso || ""}
-                              onChange={(e) => handleInputChange("veiculo", "finalidade_uso", e.target.value)}
-                              disabled={!isEditing}
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="grid gap-3">
+                                <Label htmlFor="kit_gas">Kit Gás</Label>
+                                <Input
+                                  id="kit_gas"
+                                  value={editedProposta.veiculo.kit_gas || ""}
+                                  onChange={(e) => handleInputChange("veiculo", "kit_gas", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                              <div className="grid gap-3">
+                                <Label htmlFor="blindado">Blindado</Label>
+                                <Input
+                                  id="blindado"
+                                  value={editedProposta.veiculo.blindado || ""}
+                                  onChange={(e) => handleInputChange("veiculo", "blindado", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                              <div className="grid gap-3">
+                                <Label htmlFor="zero_km">Zero KM</Label>
+                                <Input
+                                  id="zero_km"
+                                  value={editedProposta.veiculo.zero_km || ""}
+                                  onChange={(e) => handleInputChange("veiculo", "zero_km", e.target.value)}
+                                  disabled={!isEditing}
+                                />
+                              </div>
+                            </div>
+                            <div className="grid gap-3">
+                              <Label htmlFor="finalidade_uso">Finalidade de Uso</Label>
+                              <Input
+                                id="finalidade_uso"
+                                value={editedProposta.veiculo.finalidade_uso || ""}
+                                onChange={(e) => handleInputChange("veiculo", "finalidade_uso", e.target.value)}
+                                disabled={!isEditing}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
                     </div>
                   </motion.div>
                 )}
@@ -876,10 +979,13 @@ export default function PropostaDetalhesPage() {
                 {tabAtiva === "corretor" && (
                   <motion.div
                     key="corretor"
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.25 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
                   >
                     <Card className="bg-black dark:bg-black border border-gray-800">
                       <CardHeader>
@@ -935,10 +1041,13 @@ export default function PropostaDetalhesPage() {
                 {tabAtiva === "valores" && (
                   <motion.div
                     key="valores"
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -16 }}
-                    transition={{ duration: 0.25 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <Card className="bg-black dark:bg-black border border-gray-800">

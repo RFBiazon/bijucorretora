@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { Copy, Upload, RefreshCw, CheckCircle, FileUp, File, X, User } from "lucide-react"
+import { Copy, Upload, RefreshCw, CheckCircle, FileUp, File, X, User, ArrowLeft, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Toaster } from "@/components/ui/toaster"
@@ -19,6 +19,24 @@ import { Badge } from "@/components/ui/badge"
 import { extrairSeguradora, extrairValorPremio } from "@/utils/extrator-dados"
 import PageTransition from "@/components/PageTransition"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { useRouter } from "next/navigation"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface ResultadoCotacao {
   texto: string
@@ -38,8 +56,12 @@ export default function CotacaoPage() {
   const [copied, setCopied] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [salvo, setSalvo] = useState(false)
+  const [cotacaoAtualId, setCotacaoAtualId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
+  const [showDiscardAlert, setShowDiscardAlert] = useState(false)
+  const router = useRouter()
 
   const handleFileChange = (selectedFile: File | null) => {
     if (!selectedFile) return
@@ -155,6 +177,7 @@ export default function CotacaoPage() {
     setFile(null)
     setResultado(null)
     setUploadProgress(0)
+    setCotacaoAtualId(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -189,8 +212,14 @@ export default function CotacaoPage() {
 
       toast.success({
         title: "Cotação salva",
-        description: `Cotação de ${nomeSeguradoAtualizado} adicionada ao histórico`,
+        description: `Cotação de ${nomeSeguradoAtualizado} Salva com sucesso`,
       })
+
+      setSalvo(true)
+      // Usar setTimeout para garantir que o estado seja atualizado após a renderização
+      setTimeout(() => {
+        setSalvo(false)
+      }, 2000)
     } catch (error) {
       console.error("Erro ao salvar cotação:", error)
       toast.error({
@@ -205,8 +234,10 @@ export default function CotacaoPage() {
   const carregarCotacao = (cotacao: any) => {
     setResultado({
       texto: cotacao.texto,
-      nomeSegurado: cotacao.nome, // Usar o nome da cotação como nome do segurado
+      nomeSegurado: cotacao.nome,
+      id: cotacao.id
     })
+    setCotacaoAtualId(cotacao.id)
   }
 
   const atualizarExtracao = () => {
@@ -227,6 +258,65 @@ export default function CotacaoPage() {
       title: "Informações atualizadas",
       description: "Os dados foram extraídos novamente do texto editado",
     })
+  }
+
+  const handleVoltar = async () => {
+    try {
+      setSalvando(true)
+
+      // Extrair nome do segurado do texto editado
+      const nomeSeguradoAtualizado =
+        extrairNomeSegurado(resultado?.texto || "") || resultado?.nomeSegurado || "Segurado não identificado"
+
+      // Se tiver um ID de cotação atual, atualiza o registro existente
+      if (cotacaoAtualId) {
+        const { error } = await supabase
+          .from("cotacoes")
+          .update({
+            nome: nomeSeguradoAtualizado,
+            texto: resultado?.texto || "",
+            data: new Date().toISOString(),
+          })
+          .eq("id", cotacaoAtualId)
+
+        if (error) {
+          throw error
+        }
+      } else {
+        // Se não tiver ID, cria um novo registro
+        const cotacaoId = uuidv4()
+        const novaCotacao = {
+          id: cotacaoId,
+          nome: nomeSeguradoAtualizado,
+          nome_arquivo: file?.name || "arquivo.pdf",
+          data: new Date().toISOString(),
+          texto: resultado?.texto || "",
+          created_at: new Date().toISOString(),
+        }
+
+        const { error } = await supabase.from("cotacoes").insert(novaCotacao)
+        if (error) {
+          throw error
+        }
+      }
+
+      toast.success({
+        title: "Cotação salva",
+        description: `Cotação de ${nomeSeguradoAtualizado} salva com sucesso`,
+      })
+      
+      // Resetar o formulário e voltar para a lista
+      resetForm()
+      setCotacaoAtualId(null)
+    } catch (error) {
+      console.error("Erro ao salvar cotação:", error)
+      toast.error({
+        title: "Erro",
+        description: "Falha ao salvar a cotação. Tente novamente.",
+      })
+    } finally {
+      setSalvando(false)
+    }
   }
 
   return (
@@ -332,72 +422,148 @@ export default function CotacaoPage() {
                 )}
 
                 {resultado && (
-                  <div className="mt-6 space-y-4">
+                  <motion.div 
+                    className="mt-6 space-y-4"
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
+                  >
                     <div className="space-y-3">
                       {resultado.nomeSegurado && (
-                        <div className="flex items-center gap-2 bg-primary/10 p-3 rounded-md">
+                        <motion.div 
+                          className="flex items-center gap-2 bg-primary/10 p-3 rounded-md"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{
+                            duration: 0.4,
+                            delay: 0.1,
+                            ease: [0.4, 0, 0.2, 1]
+                          }}
+                        >
                           <User className="h-5 w-5 text-primary" />
                           <div>
                             <p className="text-sm font-medium">Segurado</p>
                             <p className="font-semibold">{resultado.nomeSegurado}</p>
                           </div>
-                        </div>
+                        </motion.div>
                       )}
 
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                          {resultado.seguradora && resultado.seguradora !== "Desconhecida" && (
-                            <Badge variant="outline">{resultado.seguradora}</Badge>
-                          )}
-                          {resultado.valorPremio && (
-                            <Badge variant="outline">
-                              R$ {resultado.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
-                            {copied ? (
-                              <>
-                                <CheckCircle size={16} className="text-green-500" />
-                                Copiado
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={16} />
-                                Copiar
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={salvarCotacao}
-                            className="flex items-center gap-1"
-                            disabled={salvando}
-                          >
-                            {salvando ? (
-                              <>
-                                <RefreshCw size={16} className="mr-1 animate-spin" />
-                                Salvando...
-                              </>
-                            ) : (
-                              "Salvar"
-                            )}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={atualizarExtracao}
-                            className="flex items-center gap-1"
-                          >
-                            <RefreshCw size={16} className="mr-1" />
-                            Atualizar dados
-                          </Button>
-                        </div>
-                      </div>
+                      <motion.div 
+                        className="flex gap-2"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.2,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        {resultado.seguradora && resultado.seguradora !== "Desconhecida" && (
+                          <Badge variant="outline">{resultado.seguradora}</Badge>
+                        )}
+                        {resultado.valorPremio && (
+                          <Badge variant="outline">
+                            R$ {resultado.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </Badge>
+                        )}
+                      </motion.div>
+
+                      <motion.div 
+                        className="flex gap-2"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          duration: 0.4,
+                          delay: 0.3,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                      >
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
+                                {copied ? (
+                                  <>
+                                    <CheckCircle size={16} className="text-green-500" />
+                                    Copiado
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy size={16} />
+                                    Copiar
+                                  </>
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Copiar texto da cotação</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={atualizarExtracao}
+                                className="flex items-center gap-1"
+                              >
+                                <RefreshCw size={16} className="mr-1" />
+                                Atualizar dados
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Atualizar dados extraídos do texto</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleVoltar}
+                                className="flex items-center gap-1"
+                                disabled={salvando}
+                              >
+                                {salvando ? (
+                                  <>
+                                    <RefreshCw size={16} className="mr-1 animate-spin" />
+                                    Salvando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <ArrowLeft size={16} className="mr-1" />
+                                    Voltar
+                                  </>
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Salvar e voltar para lista de cotações</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </motion.div>
                     </div>
-                    <div className="relative">
+
+                    <motion.div 
+                      className="space-y-2"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: 0.4,
+                        delay: 0.4,
+                        ease: [0.4, 0, 0.2, 1]
+                      }}
+                    >
                       <div className="flex justify-between items-center mb-2">
                         <label htmlFor="texto-cotacao" className="text-sm font-medium">
                           Texto da Cotação (editável)
@@ -412,11 +578,22 @@ export default function CotacaoPage() {
                         value={resultado.texto}
                         onChange={(e) => setResultado({ ...resultado, texto: e.target.value })}
                       />
-                    </div>
-                    <Button variant="outline" onClick={resetForm} className="w-full">
-                      Nova Consulta
-                    </Button>
-                  </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: 0.4,
+                        delay: 0.5,
+                        ease: [0.4, 0, 0.2, 1]
+                      }}
+                    >
+                      <Button variant="outline" onClick={resetForm} className="w-full">
+                        Nova Consulta
+                      </Button>
+                    </motion.div>
+                  </motion.div>
                 )}
               </div>
             </CardContent>
