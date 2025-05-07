@@ -1,5 +1,3 @@
-"use client"
-
 import { toast } from "sonner"
 
 type ToastType = "success" | "error" | "info" | "warning"
@@ -10,7 +8,7 @@ interface ToastOptions {
   duration?: number
 }
 
-export const useToast = () => {
+export const useSonnerToast = () => {
   const showToast = (type: ToastType, options: ToastOptions) => {
     const { title, description, duration = 3000 } = options
 
@@ -47,6 +45,5 @@ export const useToast = () => {
     error: (options: ToastOptions) => showToast("error", options),
     info: (options: ToastOptions) => showToast("info", options),
     warning: (options: ToastOptions) => showToast("warning", options),
-    toasts: [],
   }
 } 

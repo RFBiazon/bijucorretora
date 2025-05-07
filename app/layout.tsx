@@ -3,14 +3,15 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Navbar } from "@/components/navbar"
+import { Toaster } from "sonner"
+import LayoutClient from "@/components/LayoutClient"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Biju Corretora",
   description: "Sistema de processamento de cotações de seguro",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -19,20 +20,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-          <div className="min-h-screen flex flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <footer className="py-6 border-t">
-              <div className="container flex flex-col items-center justify-center gap-2 text-center">
-                <p className="text-sm text-gray-500">
-                  © {new Date().getFullYear()} Biju Corretora. Todos os direitos reservados.
-                </p>
-              </div>
-            </footer>
-          </div>
+        <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false} disableTransitionOnChange>
+          <LayoutClient>{children}</LayoutClient>
+          <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>
     </html>

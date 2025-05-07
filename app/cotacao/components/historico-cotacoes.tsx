@@ -141,7 +141,7 @@ export function HistoricoCotacoes({ onSelect }: HistoricoCotacoesProps) {
               <div>
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-primary" />
-                  <h3 className="font-medium truncate max-w-[200px]">{cotacao.nome}</h3>
+                  <h3 className="font-medium max-w-full break-words whitespace-normal">{cotacao.nome}</h3>
                 </div>
                 <p className="text-xs text-muted-foreground">{formatarData(cotacao.data)}</p>
               </div>

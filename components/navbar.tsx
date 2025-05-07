@@ -1,23 +1,17 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Car, Home, FileText, Menu, X, Sun, Moon } from "lucide-react"
-import { useState, useEffect } from "react"
-import { useTheme } from "next-themes"
+import { Car, Home, FileText, Menu, X, LogOut } from "lucide-react"
+import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export function Navbar() {
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  // Após a montagem do componente, podemos renderizar o botão de tema
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const router = useRouter()
 
   const routes = [
     {
@@ -46,17 +40,23 @@ export function Navbar() {
     },
   ]
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push("/login")
+  }
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
+        {/* Logo à esquerda */}
         <div className="flex items-center gap-2">
           <Link href="/" className="font-bold text-xl flex items-center">
             Biju Corretora
           </Link>
         </div>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-6">
+        {/* Menu centralizado */}
+        <nav className="hidden md:flex flex-1 items-center justify-center gap-6">
           {routes.map((route) => (
             <Link
               key={route.href}
@@ -72,18 +72,11 @@ export function Navbar() {
           ))}
         </nav>
 
+        {/* Botão de logout no canto direito */}
         <div className="flex items-center gap-2">
-          {mounted && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label="Alternar tema"
-            >
-              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </Button>
-          )}
-
+          <Button variant="ghost" size="icon" onClick={handleLogout} title="Sair">
+            <LogOut className="h-5 w-5" />
+          </Button>
           {/* Mobile Menu Button */}
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
             {isMenuOpen ? <X /> : <Menu />}
@@ -109,6 +102,10 @@ export function Navbar() {
                 {route.label}
               </Link>
             ))}
+            {/* Botão de logout no menu mobile */}
+            <Button variant="ghost" className="mt-2 flex items-center gap-2" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" /> Sair
+            </Button>
           </nav>
         </div>
       )}

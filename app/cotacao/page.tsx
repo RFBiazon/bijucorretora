@@ -7,7 +7,7 @@ import { Copy, Upload, RefreshCw, CheckCircle, FileUp, File, X, User } from "luc
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Toaster } from "@/components/ui/toaster"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { validatePdfFile } from "@/utils/file-validation"
 import { HistoricoCotacoes } from "./components/historico-cotacoes"
 import { v4 as uuidv4 } from "uuid"
@@ -17,6 +17,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { supabase } from "@/lib/supabase"
 import { Badge } from "@/components/ui/badge"
 import { extrairSeguradora, extrairValorPremio } from "@/utils/extrator-dados"
+import PageTransition from "@/components/PageTransition"
+import { ProtectedRoute } from "@/components/ProtectedRoute"
 
 interface ResultadoCotacao {
   texto: string
@@ -37,17 +39,16 @@ export default function CotacaoPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toast } = useToast()
+  const toast = useToast()
 
   const handleFileChange = (selectedFile: File | null) => {
     if (!selectedFile) return
 
     const validation = validatePdfFile(selectedFile)
     if (!validation.valid) {
-      toast({
+      toast.error({
         title: "Erro",
         description: validation.message,
-        variant: "destructive",
       })
       return
     }
@@ -114,16 +115,15 @@ export default function CotacaoPage() {
         nomeSegurado,
       })
 
-      toast({
+      toast.success({
         title: "Sucesso",
         description: "PDF processado com sucesso!",
       })
     } catch (error) {
       console.error("Erro ao enviar arquivo:", error)
-      toast({
+      toast.error({
         title: "Erro",
         description: "Falha ao processar o PDF. Tente novamente.",
-        variant: "destructive",
       })
     } finally {
       setLoading(false)
@@ -136,17 +136,16 @@ export default function CotacaoPage() {
         .writeText(resultado.texto)
         .then(() => {
           setCopied(true)
-          toast({
+          toast.success({
             title: "Copiado!",
             description: "Texto copiado para a área de transferência",
           })
           setTimeout(() => setCopied(false), 2000)
         })
         .catch(() => {
-          toast({
+          toast.error({
             title: "Erro",
             description: "Falha ao copiar o texto",
-            variant: "destructive",
           })
         })
     }
@@ -174,10 +173,10 @@ export default function CotacaoPage() {
 
       const novaCotacao = {
         id: cotacaoId,
-        nome: nomeSeguradoAtualizado, // Usar o nome do segurado como nome da cotação
+        nome: nomeSeguradoAtualizado,
         nome_arquivo: file.name,
         data: new Date().toISOString(),
-        texto: resultado.texto, // Usar o texto editado
+        texto: resultado.texto,
         created_at: new Date().toISOString(),
       }
 
@@ -188,16 +187,15 @@ export default function CotacaoPage() {
         throw error
       }
 
-      toast({
+      toast.success({
         title: "Cotação salva",
         description: `Cotação de ${nomeSeguradoAtualizado} adicionada ao histórico`,
       })
     } catch (error) {
       console.error("Erro ao salvar cotação:", error)
-      toast({
+      toast.error({
         title: "Erro",
         description: "Falha ao salvar a cotação. Tente novamente.",
-        variant: "destructive",
       })
     } finally {
       setSalvando(false)
@@ -211,13 +209,12 @@ export default function CotacaoPage() {
     })
   }
 
-  // Adicione esta função após a função handleCopy
   const atualizarExtracao = () => {
     if (!resultado) return
 
-    const nomeSegurado = extrairNomeSegurado(resultado.texto)
-    const seguradora = extrairSeguradora(resultado.texto)
-    const valorPremio = extrairValorPremio(resultado.texto)
+    const nomeSegurado = extrairNomeSegurado(resultado.texto) || undefined
+    const seguradora = extrairSeguradora(resultado.texto) || undefined
+    const valorPremio = extrairValorPremio(resultado.texto) || undefined
 
     setResultado({
       ...resultado,
@@ -226,230 +223,234 @@ export default function CotacaoPage() {
       valorPremio,
     })
 
-    toast({
+    toast.info({
       title: "Informações atualizadas",
       description: "Os dados foram extraídos novamente do texto editado",
     })
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span>Cotação de Seguro</span>
-            <span className="text-2xl">🚗</span>
-          </CardTitle>
-          <CardDescription>Envie o PDF da cotação para processamento automático</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {!resultado ? (
-              <div
-                className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
-                  isDragging
-                    ? "border-primary bg-primary/5"
-                    : file
-                      ? "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/20"
-                      : "border-gray-300 hover:border-primary hover:bg-gray-50 dark:border-gray-700 dark:hover:border-primary dark:hover:bg-gray-800/50"
-                }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <div className="flex flex-col items-center justify-center text-center">
-                  <AnimatePresence mode="wait">
-                    {!file ? (
-                      <motion.div
-                        key="upload-prompt"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="flex flex-col items-center"
-                      >
-                        <div className="p-3 mb-4 rounded-full bg-primary/10">
-                          <FileUp className="h-8 w-8 text-primary" />
+    <ProtectedRoute>
+      <PageTransition>
+        <div className="container py-8 flex flex-col items-center justify-center min-h-[80vh]">
+          <Card className="w-full max-w-lg mx-auto bg-black dark:bg-black border border-gray-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span>Cotação de Seguro</span>
+                <span className="text-2xl">🚗</span>
+              </CardTitle>
+              <CardDescription>Envie o PDF da cotação para processamento automático</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {!resultado ? (
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
+                      isDragging
+                        ? "border-primary bg-primary/5"
+                        : file
+                          ? "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/20"
+                          : "border-gray-300 hover:border-primary hover:bg-gray-50 dark:border-gray-700 dark:hover:border-primary dark:hover:bg-gray-800/50"
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <AnimatePresence mode="wait">
+                        {!file ? (
+                          <motion.div
+                            key="upload-prompt"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center"
+                          >
+                            <div className="p-3 mb-4 rounded-full bg-primary/10">
+                              <FileUp className="h-8 w-8 text-primary" />
+                            </div>
+                            <h3 className="text-lg font-semibold mb-2">Arraste e solte o arquivo PDF aqui</h3>
+                            <p className="text-sm text-muted-foreground mb-4">ou clique para selecionar um arquivo</p>
+                            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={loading}>
+                              <Upload className="mr-2 h-4 w-4" />
+                              Selecionar arquivo
+                            </Button>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="application/pdf"
+                              onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
+                              className="hidden"
+                            />
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="file-selected"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center w-full"
+                          >
+                            <div className="p-3 mb-4 rounded-full bg-green-100 dark:bg-green-900/30">
+                              <File className="h-8 w-8 text-green-600 dark:text-green-400" />
+                            </div>
+                            <h3 className="text-lg font-semibold mb-1">Arquivo selecionado</h3>
+                            <p className="text-sm text-muted-foreground mb-4 max-w-xs truncate">{file.name}</p>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={resetForm} disabled={loading}>
+                                <X className="mr-1 h-4 w-4" />
+                                Remover
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={loading}
+                              >
+                                <Upload className="mr-1 h-4 w-4" />
+                                Trocar arquivo
+                              </Button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                ) : null}
+
+                {loading && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Progresso do processamento</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <Progress value={uploadProgress} className="h-2" />
+                    <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+                      {uploadProgress < 100 ? "Processando PDF..." : "Processamento concluído!"}
+                    </p>
+                  </div>
+                )}
+
+                {resultado && (
+                  <div className="mt-6 space-y-4">
+                    <div className="space-y-3">
+                      {resultado.nomeSegurado && (
+                        <div className="flex items-center gap-2 bg-primary/10 p-3 rounded-md">
+                          <User className="h-5 w-5 text-primary" />
+                          <div>
+                            <p className="text-sm font-medium">Segurado</p>
+                            <p className="font-semibold">{resultado.nomeSegurado}</p>
+                          </div>
                         </div>
-                        <h3 className="text-lg font-semibold mb-2">Arraste e solte o arquivo PDF aqui</h3>
-                        <p className="text-sm text-muted-foreground mb-4">ou clique para selecionar um arquivo</p>
-                        <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={loading}>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Selecionar arquivo
-                        </Button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="application/pdf"
-                          onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
-                          className="hidden"
-                        />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="file-selected"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="flex flex-col items-center w-full"
-                      >
-                        <div className="p-3 mb-4 rounded-full bg-green-100 dark:bg-green-900/30">
-                          <File className="h-8 w-8 text-green-600 dark:text-green-400" />
-                        </div>
-                        <h3 className="text-lg font-semibold mb-1">Arquivo selecionado</h3>
-                        <p className="text-sm text-muted-foreground mb-4 max-w-xs truncate">{file.name}</p>
+                      )}
+
+                      <div className="flex items-center justify-between">
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={resetForm} disabled={loading}>
-                            <X className="mr-1 h-4 w-4" />
-                            Remover
+                          {resultado.seguradora && resultado.seguradora !== "Desconhecida" && (
+                            <Badge variant="outline">{resultado.seguradora}</Badge>
+                          )}
+                          {resultado.valorPremio && (
+                            <Badge variant="outline">
+                              R$ {resultado.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
+                            {copied ? (
+                              <>
+                                <CheckCircle size={16} className="text-green-500" />
+                                Copiado
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={16} />
+                                Copiar
+                              </>
+                            )}
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={loading}
+                            onClick={salvarCotacao}
+                            className="flex items-center gap-1"
+                            disabled={salvando}
                           >
-                            <Upload className="mr-1 h-4 w-4" />
-                            Trocar arquivo
+                            {salvando ? (
+                              <>
+                                <RefreshCw size={16} className="mr-1 animate-spin" />
+                                Salvando...
+                              </>
+                            ) : (
+                              "Salvar"
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={atualizarExtracao}
+                            className="flex items-center gap-1"
+                          >
+                            <RefreshCw size={16} className="mr-1" />
+                            Atualizar dados
                           </Button>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            ) : null}
-
-            {loading && (
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Progresso do processamento</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <Progress value={uploadProgress} className="h-2" />
-                <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                  {uploadProgress < 100 ? "Processando PDF..." : "Processamento concluído!"}
-                </p>
-              </div>
-            )}
-
-            {resultado && (
-              <div className="mt-6 space-y-4">
-                <div className="space-y-3">
-                  {resultado.nomeSegurado && (
-                    <div className="flex items-center gap-2 bg-primary/10 p-3 rounded-md">
-                      <User className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-sm font-medium">Segurado</p>
-                        <p className="font-semibold">{resultado.nomeSegurado}</p>
                       </div>
                     </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
-                      {resultado.seguradora && resultado.seguradora !== "Desconhecida" && (
-                        <Badge variant="outline">{resultado.seguradora}</Badge>
-                      )}
-                      {resultado.valorPremio && (
-                        <Badge variant="outline">
-                          R$ {resultado.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </Badge>
-                      )}
+                    <div className="relative">
+                      <div className="flex justify-between items-center mb-2">
+                        <label htmlFor="texto-cotacao" className="text-sm font-medium">
+                          Texto da Cotação (editável)
+                        </label>
+                        <span className="text-xs text-muted-foreground">
+                          Edite o texto conforme necessário antes de salvar
+                        </span>
+                      </div>
+                      <textarea
+                        id="texto-cotacao"
+                        className="w-full min-h-[1000px] h-[1000px] whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-4 rounded-md border dark:border-gray-700 text-sm font-mono resize-y"
+                        value={resultado.texto}
+                        onChange={(e) => setResultado({ ...resultado, texto: e.target.value })}
+                      />
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-1">
-                        {copied ? (
-                          <>
-                            <CheckCircle size={16} className="text-green-500" />
-                            Copiado
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={16} />
-                            Copiar
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={salvarCotacao}
-                        className="flex items-center gap-1"
-                        disabled={salvando}
-                      >
-                        {salvando ? (
-                          <>
-                            <RefreshCw size={16} className="mr-1 animate-spin" />
-                            Salvando...
-                          </>
-                        ) : (
-                          "Salvar"
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={atualizarExtracao}
-                        className="flex items-center gap-1"
-                      >
-                        <RefreshCw size={16} className="mr-1" />
-                        Atualizar dados
-                      </Button>
-                    </div>
+                    <Button variant="outline" onClick={resetForm} className="w-full">
+                      Nova Consulta
+                    </Button>
                   </div>
-                </div>
-                <div className="relative">
-                  <div className="flex justify-between items-center mb-2">
-                    <label htmlFor="texto-cotacao" className="text-sm font-medium">
-                      Texto da Cotação (editável)
-                    </label>
-                    <span className="text-xs text-muted-foreground">
-                      Edite o texto conforme necessário antes de salvar
-                    </span>
-                  </div>
-                  <textarea
-                    id="texto-cotacao"
-                    className="w-full min-h-[400px] whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-4 rounded-md border dark:border-gray-700 text-sm font-mono resize-y"
-                    value={resultado.texto}
-                    onChange={(e) => setResultado({ ...resultado, texto: e.target.value })}
-                  />
-                </div>
-                <Button variant="outline" onClick={resetForm} className="w-full">
-                  Nova Consulta
-                </Button>
+                )}
               </div>
+            </CardContent>
+            {!resultado && file && (
+              <CardFooter className="flex justify-between">
+                <Button variant="outline" onClick={resetForm}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleUpload} disabled={!file || loading}>
+                  {loading ? (
+                    <>
+                      <RefreshCw size={16} className="mr-2 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    "Processar PDF"
+                  )}
+                </Button>
+              </CardFooter>
             )}
-          </div>
-        </CardContent>
-        {!resultado && file && (
-          <CardFooter className="flex justify-between">
-            <Button variant="outline" onClick={resetForm}>
-              Cancelar
-            </Button>
-            <Button onClick={handleUpload} disabled={!file || loading}>
-              {loading ? (
-                <>
-                  <RefreshCw size={16} className="mr-2 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                "Processar PDF"
-              )}
-            </Button>
-          </CardFooter>
-        )}
-      </Card>
-      {!resultado && (
-        <Card className="w-full max-w-lg mt-6">
-          <CardHeader>
-            <CardTitle>Histórico de Cotações</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <HistoricoCotacoes onSelect={carregarCotacao} />
-          </CardContent>
-        </Card>
-      )}
-      <Toaster />
-    </div>
+          </Card>
+          {!resultado && (
+            <Card className="w-full max-w-lg mt-6 mx-auto bg-black dark:bg-black border border-gray-800">
+              <CardHeader>
+                <CardTitle>Histórico de Cotações</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <HistoricoCotacoes onSelect={carregarCotacao} />
+              </CardContent>
+            </Card>
+          )}
+          <Toaster />
+        </div>
+      </PageTransition>
+    </ProtectedRoute>
   )
 }
