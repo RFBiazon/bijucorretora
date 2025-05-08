@@ -35,9 +35,9 @@ export default function LoginPage() {
     } else {
       toast({
         title: "Login realizado com sucesso!",
-        variant: "success",
+        variant: "default",
       });
-      router.push("/");
+      window.location.href = "/";
     }
   }
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { formatarValorMonetario, normalizarProposta } from "@/lib/utils/normalize"
 import { formatarNomeSeguradora } from "@/utils/formatters"
+import { mascararCPF } from "@/utils/mascarar"
 
 export function Overview() {
   const [dados, setDados] = useState<any[]>([])
@@ -43,6 +44,7 @@ export function Overview() {
         <div key={item.id} className="flex items-center justify-between border-b border-gray-800 pb-4 last:border-b-0">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{item.segurado.nome}</p>
+            <p className="text-xs text-muted-foreground">CPF: {mascararCPF(item.segurado.cpf)}</p>
             <p className="text-sm text-muted-foreground">{formatarNomeSeguradora(item.proposta.cia_seguradora)}</p>
           </div>
           <div className="font-medium">

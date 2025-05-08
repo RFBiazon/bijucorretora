@@ -195,164 +195,151 @@ export default function UploadPage() {
     <ProtectedRoute>
       <PageTransition>
         <div className="container mx-auto p-4">
-          <AnimatedElement index={0}>
-            <h1 className="text-2xl font-bold mb-6">Upload de Proposta</h1>
-          </AnimatedElement>
-
           <AnimatedElement index={1}>
-            <div className="grid gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Arquivo da Proposta</CardTitle>
-                  <CardDescription>
-                    Faça upload do arquivo PDF da proposta
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <motion.div
-                      layout
-                      className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
-                        isDragging
-                          ? "border-primary bg-primary/5"
-                          : file
-                            ? "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/20"
-                            : "border-gray-300 hover:border-primary hover:bg-gray-50 dark:border-gray-700 dark:hover:border-primary dark:hover:bg-gray-800/50"
-                      }`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{
-                        duration: 0.4,
-                        ease: [0.4, 0, 0.2, 1]
-                      }}
-                    >
-                      <div className="flex flex-col items-center justify-center text-center">
-                        <AnimatePresence mode="wait">
-                          {!file ? (
-                            <motion.div
-                              key="upload-prompt"
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{
-                                duration: 0.4,
-                                ease: [0.4, 0, 0.2, 1]
-                              }}
-                              className="flex flex-col items-center"
-                            >
-                              <div className="p-3 mb-4 rounded-full bg-primary/10">
-                                <FileUp className="h-8 w-8 text-primary" />
-                              </div>
-                              <h3 className="text-lg font-semibold mb-2">Arraste e solte o arquivo PDF aqui</h3>
-                              <p className="text-sm text-muted-foreground mb-4">ou clique para selecionar um arquivo</p>
-                              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                                <Upload className="mr-2 h-4 w-4" />
-                                Selecionar arquivo
-                              </Button>
-                              <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="application/pdf"
-                                onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
-                                className="hidden"
-                              />
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              key="file-selected"
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{
-                                duration: 0.4,
-                                ease: [0.4, 0, 0.2, 1]
-                              }}
-                              className="flex flex-col items-center w-full"
-                            >
-                              <div className="p-3 mb-4 rounded-full bg-green-100 dark:bg-green-900/30">
-                                <File className="h-8 w-8 text-green-600 dark:text-green-400" />
-                              </div>
-                              <h3 className="text-lg font-semibold mb-1">Arquivo selecionado</h3>
-                              <p className="text-sm text-muted-foreground mb-4 max-w-xs truncate">{file.name}</p>
-                              <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={resetForm} disabled={isUploading}>
-                                  <X className="mr-1 h-4 w-4" />
-                                  Remover
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => fileInputRef.current?.click()}
-                                  disabled={isUploading}
-                                >
-                                  <Upload className="mr-1 h-4 w-4" />
-                                  Trocar arquivo
-                                </Button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </motion.div>
-
-                    {uploadStatus !== "idle" && (
+            <div className="flex justify-center">
+              <div className="w-full max-w-xl">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Envio de Proposta <span role="img" aria-label="documento">📄</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Faça upload do arquivo PDF da proposta
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
                       <motion.div
-                        initial={{ opacity: 0, scale: 0.95, height: 0 }}
-                        animate={{ opacity: 1, scale: 1, height: "auto" }}
-                        exit={{ opacity: 0, scale: 0.95, height: 0 }}
+                        layout
+                        className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
+                          isDragging
+                            ? "border-primary bg-primary/5"
+                            : file
+                              ? "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/20"
+                              : "border-gray-300 hover:border-primary hover:bg-gray-50 dark:border-gray-700 dark:hover:border-primary dark:hover:bg-gray-800/50"
+                        }`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
                         transition={{
                           duration: 0.4,
                           ease: [0.4, 0, 0.2, 1]
                         }}
-                        className="space-y-2"
                       >
-                        <div className="flex justify-between text-sm">
-                          <span>Progresso do upload</span>
-                          <span>{uploadProgress}%</span>
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <AnimatePresence mode="wait">
+                            {!file ? (
+                              <motion.div
+                                key="upload-prompt"
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{
+                                  duration: 0.4,
+                                  ease: [0.4, 0, 0.2, 1]
+                                }}
+                                className="flex flex-col items-center"
+                              >
+                                <div className="p-3 mb-4 rounded-full bg-primary/10">
+                                  <FileUp className="h-8 w-8 text-primary" />
+                                </div>
+                                <h3 className="text-lg font-semibold mb-2">Arraste e solte o arquivo PDF aqui</h3>
+                                <p className="text-sm text-muted-foreground mb-4">ou clique para selecionar um arquivo</p>
+                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Selecionar arquivo
+                                </Button>
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept="application/pdf"
+                                  onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
+                                  className="hidden"
+                                />
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="file-selected"
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{
+                                  duration: 0.4,
+                                  ease: [0.4, 0, 0.2, 1]
+                                }}
+                                className="flex flex-col items-center w-full"
+                              >
+                                <div className="p-3 mb-4 rounded-full bg-green-100 dark:bg-green-900/30">
+                                  <File className="h-8 w-8 text-green-600 dark:text-green-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold mb-1">Arquivo selecionado</h3>
+                                <p className="text-sm text-muted-foreground mb-4 max-w-xs truncate">{file.name}</p>
+                                <div className="flex gap-2">
+                                  <Button variant="outline" size="sm" onClick={resetForm} disabled={isUploading}>
+                                    <X className="mr-1 h-4 w-4" />
+                                    Remover
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isUploading}
+                                  >
+                                    <Upload className="mr-1 h-4 w-4" />
+                                    Trocar arquivo
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
-                        <Progress value={uploadProgress} className="h-2" />
-                        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                          {uploadStatus === "uploading" && "Enviando arquivo..."}
-                          {uploadStatus === "checking" && `Verificando registro... (${checkCount}/24)`}
-                          {uploadStatus === "success" && "Upload concluído com sucesso!"}
-                          {uploadStatus === "error" && "Erro no upload. Tente novamente."}
-                        </p>
                       </motion.div>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button variant="outline" onClick={resetForm} disabled={isUploading}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleUpload} disabled={!file || isUploading}>
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Enviando...
-                      </>
-                    ) : (
-                      "Enviar arquivo"
-                    )}
-                  </Button>
-                </CardFooter>
-              </Card>
-            </div>
-          </AnimatedElement>
 
-          <AnimatedElement index={2}>
-            <div className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Status do Upload</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* ... existing status content ... */}
-                </CardContent>
-              </Card>
+                      {uploadStatus !== "idle" && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, height: 0 }}
+                          animate={{ opacity: 1, scale: 1, height: "auto" }}
+                          exit={{ opacity: 0, scale: 0.95, height: 0 }}
+                          transition={{
+                            duration: 0.4,
+                            ease: [0.4, 0, 0.2, 1]
+                          }}
+                          className="space-y-2"
+                        >
+                          <div className="flex justify-between text-sm">
+                            <span>Progresso do upload</span>
+                            <span>{uploadProgress}%</span>
+                          </div>
+                          <Progress value={uploadProgress} className="h-2" />
+                          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+                            {uploadStatus === "uploading" && "Enviando arquivo..."}
+                            {uploadStatus === "checking" && `Verificando registro... (${checkCount}/24)`}
+                            {uploadStatus === "success" && "Upload concluído com sucesso!"}
+                            {uploadStatus === "error" && "Erro no upload. Tente novamente."}
+                          </p>
+                        </motion.div>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button variant="outline" onClick={resetForm} disabled={isUploading}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleUpload} disabled={!file || isUploading}>
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        "Enviar arquivo"
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </div>
             </div>
           </AnimatedElement>
         </div>

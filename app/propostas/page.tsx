@@ -23,6 +23,7 @@ import {
 import PageTransition from "@/components/PageTransition"
 import { normalizarProposta } from "@/lib/utils/normalize"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 type PropostaProcessada = {
   id: string
@@ -33,12 +34,23 @@ type PropostaProcessada = {
 }
 
 export default function PropostasPage() {
-  const [propostas, setPropostas] = useState<PropostaProcessada[]>([])
-  const [propostasFiltradas, setPropostasFiltradas] = useState<PropostaProcessada[]>([])
+  const [propostas, setPropostas] = useState<any[]>([])
+  const [propostasFiltradas, setPropostasFiltradas] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [propostaParaExcluir, setPropostaParaExcluir] = useState<string | null>(null)
   const [novaPropostaId, setNovaPropostaId] = useState<string | null>(null)
+  const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
+
+  // Efeito para lidar com atualizações de propostas
+  useEffect(() => {
+    if (propostaAtualizada) {
+      setPropostas((prev) =>
+        prev.map((p) => (p.id === propostaAtualizada.id ? propostaAtualizada : p))
+      )
+      setPropostaAtualizada(null)
+    }
+  }, [propostaAtualizada])
 
   useEffect(() => {
     fetchPropostas()
@@ -53,7 +65,7 @@ export default function PropostasPage() {
           schema: "public",
           table: "ocr_processamento",
         },
-        (payload) => {
+        (payload: any) => {
           console.log("Nova proposta recebida:", payload)
           const novaProposta = payload.new as PropostaProcessada
           setPropostas((prev) => [novaProposta, ...prev])
@@ -70,12 +82,10 @@ export default function PropostasPage() {
           schema: "public",
           table: "ocr_processamento",
         },
-        (payload) => {
+        (payload: any) => {
           console.log("Proposta atualizada:", payload)
           const propostaAtualizada = payload.new as PropostaProcessada
-          setPropostas((prev) =>
-            prev.map((p) => (p.id === propostaAtualizada.id ? propostaAtualizada : p))
-          )
+          setPropostaAtualizada(propostaAtualizada)
           if (propostaAtualizada.status === "concluido") {
             toast.success("Proposta processada!", {
               description: "A proposta foi processada com sucesso.",
@@ -98,38 +108,21 @@ export default function PropostasPage() {
 
     const termLower = searchTerm.toLowerCase().trim()
     const filtradas = propostas.filter((proposta) => {
-      const propostaNormalizada = normalizarProposta(proposta)
-      
       // Busca por nome do segurado
-      const nome = propostaNormalizada.segurado.nome.toLowerCase()
+      const nome = proposta.segurado.nome?.toLowerCase() || ""
       if (nome.includes(termLower)) return true
 
       // Busca por CPF
-      const cpf = propostaNormalizada.segurado.cpf.toLowerCase()
+      const cpf = proposta.segurado.cpf?.toLowerCase() || ""
       if (cpf.includes(termLower)) return true
 
       // Busca por placa do veículo
-      const placa = propostaNormalizada.veiculo.placa.toLowerCase()
+      const placa = proposta.veiculo.placa?.toLowerCase() || ""
       if (placa.includes(termLower)) return true
 
       // Busca por número da proposta
-      const numeroProposta = propostaNormalizada.proposta.numero.toLowerCase()
+      const numeroProposta = proposta.proposta.numero?.toLowerCase() || ""
       if (numeroProposta.includes(termLower)) return true
-
-      // Busca por nome da seguradora
-      const seguradora = propostaNormalizada.proposta.cia_seguradora.toLowerCase()
-      if (seguradora.includes(termLower)) return true
-
-      // Busca por modelo/marca do veículo
-      const marcaModelo = propostaNormalizada.veiculo.marca_modelo.toLowerCase()
-      if (marcaModelo.includes(termLower)) return true
-
-      // Busca por nome do corretor
-      const corretor = propostaNormalizada.corretor?.nome?.toLowerCase() || ""
-      if (corretor.includes(termLower)) return true
-
-      // Busca por ID da proposta
-      if (proposta.id.toLowerCase().includes(termLower)) return true
 
       return false
     })
@@ -153,8 +146,9 @@ export default function PropostasPage() {
       }
 
       console.log("Propostas encontradas:", data?.length || 0)
-      setPropostas(data || [])
-      setPropostasFiltradas(data || [])
+      const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+      setPropostas(propostasNormalizadas)
+      setPropostasFiltradas(propostasNormalizadas)
     } catch (error) {
       console.error("Erro ao buscar propostas:", error)
       toast.error("Erro ao carregar propostas", {
@@ -218,9 +212,8 @@ export default function PropostasPage() {
     }
   }
 
-  const renderPropostaCard = (proposta: PropostaProcessada) => {
+  const renderPropostaCard = (proposta) => {
     const isNovaProposta = proposta.id === novaPropostaId
-    const propostaNormalizada = normalizarProposta(proposta)
 
     return (
       <motion.div
@@ -234,31 +227,31 @@ export default function PropostasPage() {
             isNovaProposta ? "ring-2 ring-primary animate-pulse" : ""
           }`}
         >
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-start">
-              <CardTitle className="text-lg truncate max-w-[70%]">{propostaNormalizada.proposta.numero || proposta.id.substring(0, 8)}</CardTitle>
-              {getStatusBadge(proposta.status)}
-            </div>
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-start">
+              <CardTitle className="text-lg truncate max-w-[70%]">{proposta.proposta.numero || proposta.id.substring(0, 8)}</CardTitle>
+          {getStatusBadge(proposta.status)}
+        </div>
             <CardDescription className="truncate max-w-full">
-              {propostaNormalizada.proposta.cia_seguradora}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pb-2">
+              {proposta.proposta.cia_seguradora}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pb-2">
             <div className="flex flex-col gap-1">
-              <p className="text-base font-semibold mt-2 mb-1 truncate max-w-full">{propostaNormalizada.segurado.nome}</p>
+              <p className="text-base font-semibold mt-2 mb-1 truncate max-w-full">{proposta.segurado.nome}</p>
               <p className="text-sm text-muted-foreground mb-1 truncate max-w-full">
-                CPF: {propostaNormalizada.segurado.cpf}
+                CPF: {proposta.segurado.cpf}
               </p>
               <p className="text-sm text-muted-foreground mb-1 truncate max-w-full">
-                {propostaNormalizada.veiculo.marca_modelo}
+                {proposta.veiculo.marca_modelo}
               </p>
-              {propostaNormalizada.veiculo.placa && (
+              {proposta.veiculo.placa && (
                 <p className="text-sm text-muted-foreground mb-2 truncate max-w-full">
-                  Placa: {propostaNormalizada.veiculo.placa}
-                </p>
+                  Placa: {proposta.veiculo.placa}
+          </p>
               )}
-            </div>
-          </CardContent>
+        </div>
+      </CardContent>
           <CardFooter className="pt-2 flex justify-between items-center mt-auto">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-muted-foreground">
@@ -274,57 +267,75 @@ export default function PropostasPage() {
               </span>
               <span className="text-[10px] text-gray-400 dark:text-gray-500 select-all">ID: {proposta.id?.slice(0, 8)}...</span>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950/30"
-                onClick={() => setPropostaParaExcluir(proposta.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-                <span className="sr-only">Excluir proposta</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                asChild
-                className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
-                disabled={proposta.status !== "concluido"}
-              >
-                <Link href={`/propostas/${proposta.id}`}>
-                  <Eye className="h-4 w-4" />
-                  <span className="sr-only">Ver detalhes</span>
-                </Link>
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
+        <div className="flex gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950/30"
+            onClick={() => setPropostaParaExcluir(proposta.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Excluir proposta</span>
+          </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Excluir proposta</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      asChild
+                      className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                      disabled={proposta.status !== "concluido"}
+                    >
+                      <Link href={`/propostas/${proposta.id}`}>
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">Ver detalhes</span>
+                      </Link>
+          </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Ver detalhes</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+        </div>
+      </CardFooter>
+    </Card>
       </motion.div>
-    )
+  )
   }
 
   return (
     <ProtectedRoute>
       <PageTransition>
-        <div className="container py-8">
+    <div className="container py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6"
           >
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Propostas e Apólices</h1>
-              <p className="text-muted-foreground">Gerencie propostas e apólices processadas</p>
-            </div>
-            <div className="mt-4 md:mt-0">
-              <Button asChild>
-                <Link href="/propostas/upload">
-                  <FileUpload className="mr-2 h-4 w-4" />
-                  Nova Proposta
-                </Link>
-              </Button>
-            </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Propostas e Apólices</h1>
+          <p className="text-muted-foreground">Gerencie propostas e apólices processadas</p>
+        </div>
+        <div className="mt-4 md:mt-0">
+          <Button asChild>
+            <Link href="/propostas/upload">
+              <FileUpload className="mr-2 h-4 w-4" />
+              Nova Proposta
+            </Link>
+          </Button>
+        </div>
           </motion.div>
 
           <motion.div
@@ -333,44 +344,43 @@ export default function PropostasPage() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="mb-6"
           >
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, CPF, placa ou número da proposta..."
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, CPF, placa ou número da proposta..."
+            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
           </motion.div>
 
-          <Tabs defaultValue="todas" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="todas">Todas</TabsTrigger>
-              <TabsTrigger value="concluidas">Concluídas</TabsTrigger>
-              <TabsTrigger value="processando">Em Processamento</TabsTrigger>
-            </TabsList>
+      <Tabs defaultValue="todas" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="todas">Todas</TabsTrigger>
+          <TabsTrigger value="concluidas">Concluídas</TabsTrigger>
+        </TabsList>
 
-            <TabsContent value="todas" className="space-y-4">
-              {isLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[...Array(6)].map((_, i) => (
+        <TabsContent value="todas" className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
                     <Card key={i} className="animate-pulse bg-black dark:bg-black border border-gray-800">
-                      <CardHeader className="pb-2">
-                        <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
-                      </CardContent>
-                      <CardFooter>
-                        <div className="h-9 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              ) : propostasFiltradas.length > 0 ? (
+                  <CardHeader className="pb-2">
+                    <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                  </CardContent>
+                  <CardFooter>
+                    <div className="h-9 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : propostasFiltradas.length > 0 ? (
                 <motion.div
                   layout
                   className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -405,10 +415,10 @@ export default function PropostasPage() {
                         Nova Proposta
                       </Link>
                     </Button>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
             <TabsContent value="concluidas" className="space-y-4">
               <motion.div
@@ -416,37 +426,31 @@ export default function PropostasPage() {
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
               >
                 <AnimatePresence mode="popLayout">
-                  {propostasFiltradas
+            {propostasFiltradas
                     .filter((p) => p.status === "concluido")
-                    .map((proposta) => renderPropostaCard(proposta))}
+              .map((proposta) => renderPropostaCard(proposta))}
                 </AnimatePresence>
               </motion.div>
-            </TabsContent>
-
-            <TabsContent value="processando" className="space-y-4">
-              {propostasFiltradas
-                .filter((p) => p.status === "processando")
-                .map((proposta) => renderPropostaCard(proposta))}
-            </TabsContent>
-          </Tabs>
+        </TabsContent>
+      </Tabs>
 
           <AlertDialog open={!!propostaParaExcluir} onOpenChange={() => setPropostaParaExcluir(null)}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
+        <AlertDialogContent>
+          <AlertDialogHeader>
                 <AlertDialogTitle>Excluir proposta</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction onClick={excluirProposta} className="bg-red-500 hover:bg-red-600">
-                  Excluir
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
       </PageTransition>
     </ProtectedRoute>
   )

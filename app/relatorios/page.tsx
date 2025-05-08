@@ -42,6 +42,52 @@ function parseValor(valor: any): number {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
+// Função para normalizar nomes de seguradoras
+function normalizarNomeSeguradora(nome: string): string {
+  if (!nome) return "";
+  // Remove acentos
+  nome = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Remove pontuação e espaços extras
+  nome = nome.replace(/[\.,\-\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s+/g, " ").trim();
+  // Converte para minúsculas
+  nome = nome.toLowerCase();
+  // Mapeamento manual para casos comuns
+  if (nome.includes("allianz")) return "allianz seguros";
+  if (nome.includes("yellum")) return "yellum seguros";
+  if (nome.includes("tokio marine")) return "tokio marine seguradora";
+  if (nome.includes("hdi")) return "hdi seguros";
+  if (nome.includes("azul companhia")) return "azul companhia de seguros gerais";
+  if (nome.includes("bradesco")) return "bradesco auto/re companhia de seguros";
+  if (nome.includes("mapfre")) return "mapfre";
+  if (nome.includes("itau")) return "itau";
+  return nome;
+}
+
+// Função para exibir o nome curto da seguradora
+function formatarNomeSeguradoraCurto(nome: string): string {
+  const mapa: Record<string, string> = {
+    "yellum seguros": "Yelum",
+    "yellum": "Yelum",
+    "yelum": "Yelum",
+    "yelum seguros sa": "Yelum",
+    "yellum seguros sa": "Yelum",
+    "bradesco auto/re companhia de seguros": "Bradesco",
+    "bradesco": "Bradesco",
+    "allianz seguros": "Allianz",
+    "allianz": "Allianz",
+    "tokio marine seguradora": "Tokio",
+    "tokio marine": "Tokio",
+    "azul companhia de seguros gerais": "Azul",
+    "azul": "Azul",
+    "hdi seguros": "HDI",
+    "hdi": "HDI",
+    "itau": "Itaú",
+    "mapfre": "Mapfre",
+  };
+  const normalizado = normalizarNomeSeguradora(nome);
+  return mapa[normalizado] || nome;
+}
+
 export default function RelatoriosPage() {
   const [propostas, setPropostas] = useState<any[]>([])
   const [periodo, setPeriodo] = useState("todos")
@@ -103,18 +149,11 @@ export default function RelatoriosPage() {
     return filtroPeriodo && filtroSeguradora
   })
 
-  const seguradoras = Array.from(new Set(propostas.map((p) => p.proposta.cia_seguradora)))
+  const seguradorasNormalizadas = Array.from(new Set(propostas.map((p) => normalizarNomeSeguradora(p.proposta.cia_seguradora))));
 
-  const totalPropostas = propostasFiltradas.length
-  const totalValor = propostasFiltradas.reduce(
-    (acc, proposta) => acc + formatarValorMonetario(proposta.valores.preco_total),
-    0
-  )
-  const mediaValor = totalPropostas > 0 ? totalValor / totalPropostas : 0
-
-  const dadosPorSeguradora = seguradoras.map((seg) => ({
+  const dadosPorSeguradora = seguradorasNormalizadas.map((seg) => ({
     name: seg,
-    value: propostasFiltradas.filter((p) => p.proposta.cia_seguradora === seg).length,
+    value: propostasFiltradas.filter((p) => normalizarNomeSeguradora(p.proposta.cia_seguradora) === seg).length,
   }))
 
   const dadosPorVeiculo = propostasFiltradas.reduce((acc: any[], proposta) => {
@@ -201,18 +240,18 @@ export default function RelatoriosPage() {
 
   // Lista completa de seguradoras com quantidade de propostas
   const rankingSeguradoras = dadosPorSeguradora
-    .map(item => ({ name: formatarNomeSeguradora(item.name), value: item.value }))
+    .map(item => ({ name: capitalizeWords(item.name), value: item.value }))
     .sort((a, b) => b.value - a.value)
 
   // Novo agrupamento para ranking de prêmio por seguradora
   const premioPorSeguradora: Record<string, number> = {};
   propostasFiltradas.forEach((p) => {
-    const nomeSeg = formatarNomeSeguradora(p.proposta.cia_seguradora);
+    const nomeSeg = normalizarNomeSeguradora(p.proposta.cia_seguradora);
     const valor = formatarValorMonetario(p.valores.preco_total);
     premioPorSeguradora[nomeSeg] = (premioPorSeguradora[nomeSeg] || 0) + valor;
   });
   const rankingPremioSeguradora = Object.entries(premioPorSeguradora)
-    .map(([name, value]) => ({ name, value }))
+    .map(([name, value]) => ({ name: capitalizeWords(name), value }))
     .sort((a, b) => rankingPremioOrder === 'desc' ? b.value - a.value : a.value - b.value);
 
   return (
@@ -246,9 +285,9 @@ export default function RelatoriosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todas</SelectItem>
-                  {seguradoras.map((seg, idx) => (
+                  {seguradorasNormalizadas.map((seg, idx) => (
                     <SelectItem key={seg + '-' + idx} value={seg}>
-                      {formatarNomeSeguradora(seg)}
+                      {formatarNomeSeguradoraCurto(seg)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -268,27 +307,19 @@ export default function RelatoriosPage() {
                 <CardDescription>Número total de propostas processadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{totalPropostas}</div>
+                <div className="text-2xl font-bold">{propostasFiltradas.length}</div>
               </CardContent>
             </Card>
 
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
-                <CardTitle>Propostas Concluídas</CardTitle>
-                <CardDescription>Propostas processadas com sucesso</CardDescription>
+                <CardTitle>Prêmio Total</CardTitle>
+                <CardDescription>Soma total dos prêmios das propostas</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{statusCount["concluido"] || 0}</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader>
-                <CardTitle>Propostas em Processamento</CardTitle>
-                <CardDescription>Propostas sendo processadas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{statusCount["processando"] || 0}</div>
+                <div className="text-2xl font-bold">
+                  {propostasFiltradas.reduce((acc, p) => acc + parseValor(p.valores.preco_total), 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -297,7 +328,7 @@ export default function RelatoriosPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-8"
+            className="mt-8 grid gap-4 md:grid-cols-3"
           >
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
@@ -308,59 +339,32 @@ export default function RelatoriosPage() {
                 <ul className="space-y-2">
                   {dadosPorSeguradora.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
-                      <span>{formatarNomeSeguradora(item.name)}</span>
+                      <span>{formatarNomeSeguradoraCurto(item.name)}</span>
                       <span className="font-bold">{item.value}</span>
                     </li>
                   ))}
                 </ul>
               </CardContent>
             </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-8"
-          >
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
-                <CardTitle>Propostas por Status</CardTitle>
-                <CardDescription>Distribuição de propostas por status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {Object.entries(statusCount).map(([status, quantidade]) => (
-                    <li key={status} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
-                      <span className="capitalize">{status}</span>
-                      <span className="font-bold">{quantidade}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Top 3 Seguradoras e Veículos */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-            <Card className="bg-black dark:bg-black border border-gray-800 col-span-2">
-              <CardHeader>
                 <CardTitle>Seguradoras</CardTitle>
+                <CardDescription>Ranking de Propostas por Seguradora</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   {rankingSeguradoras.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
-                      <span>{item.name}</span>
+                      <span>{formatarNomeSeguradoraCurto(item.name)}</span>
                       <span className="font-bold">{item.value}</span>
                     </li>
                   ))}
                 </ul>
               </CardContent>
             </Card>
-            <Card className="bg-black dark:bg-black border border-gray-800 col-span-2">
+            <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Ranking de Prêmio por Seguradora</CardTitle>
+                <CardTitle>Ranking</CardTitle>                           
                 <button onClick={() => setRankingPremioOrder(o => o === 'desc' ? 'asc' : 'desc')} className="ml-2 text-muted-foreground hover:text-primary transition-colors">
                   {rankingPremioOrder === 'desc' ? <ArrowDown className="inline w-4 h-4" /> : <ArrowUp className="inline w-4 h-4" />}
                 </button>
@@ -369,101 +373,14 @@ export default function RelatoriosPage() {
                 <ul className="space-y-2">
                   {rankingPremioSeguradora.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
-                      <span className="truncate max-w-[60%]">{item.name}</span>
-                      <span className="font-bold text-right min-w-[120px]">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      <span className="truncate max-w-[60%]">{formatarNomeSeguradoraCurto(item.name)}</span>
+                      <span className="font-bold text-right min-w-[120px]">{Number(item.value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
                     </li>
                   ))}
                 </ul>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Resumo de status e valores */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-            <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader>
-                <CardTitle>Resumo de Valores</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
-                    <span className="text-muted-foreground">Maior prêmio:</span>
-                    <span className="font-bold">{maiorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                  </li>
-                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
-                    <span className="text-muted-foreground">Menor prêmio:</span>
-                    <span className="font-bold">{menorPremio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                  </li>
-                  <li className="flex justify-between items-center border-b border-gray-800 pb-2">
-                    <span className="text-muted-foreground">Média:</span>
-                    <span className="font-bold">{mediaValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                  </li>
-                  <li className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span className="font-bold">{totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Tabela paginada de propostas */}
-          <Card className="bg-black dark:bg-black border border-gray-800 mb-8">
-            <CardHeader>
-              <CardTitle>Propostas</CardTitle>
-              <CardDescription>Lista completa de propostas processadas</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead onClick={() => handleSort('proposta.numero')} className="cursor-pointer select-none">Número {sortConfig.key === 'proposta.numero' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                      <TableHead onClick={() => handleSort('proposta.cia_seguradora')} className="cursor-pointer select-none">Seguradora {sortConfig.key === 'proposta.cia_seguradora' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                      <TableHead onClick={() => handleSort('segurado.nome')} className="cursor-pointer select-none">Segurado {sortConfig.key === 'segurado.nome' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                      <TableHead onClick={() => handleSort('valores.preco_total')} className="cursor-pointer select-none">Prêmio {sortConfig.key === 'valores.preco_total' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                      <TableHead onClick={() => handleSort('proposta.vigencia_inicio')} className="cursor-pointer select-none">Vigência {sortConfig.key === 'proposta.vigencia_inicio' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                      <TableHead onClick={() => handleSort('corretor.nome')} className="cursor-pointer select-none">Corretor {sortConfig.key === 'corretor.nome' && (sortConfig.direction === 'asc' ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedPropostas.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell>{p.proposta.numero || p.id.slice(0, 8)}</TableCell>
-                        <TableCell>{formatarNomeSeguradora(p.proposta.cia_seguradora)}</TableCell>
-                        <TableCell>{p.segurado.nome.toUpperCase()}</TableCell>
-                        <TableCell>{formatarValorMonetario(p.valores.preco_total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell>
-                        <TableCell>{p.proposta.vigencia_fim || '-'}</TableCell>
-                        <TableCell>{formatarNomeCorretor(p.corretor?.nome)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {/* Paginação */}
-              <div className="flex justify-between items-center mt-4">
-                <span className="text-xs text-muted-foreground">
-                  Página {pagina} de {totalPaginas}
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    className="px-3 py-1 rounded bg-gray-800 text-white disabled:opacity-50"
-                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                    disabled={pagina === 1}
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    className="px-3 py-1 rounded bg-gray-800 text-white disabled:opacity-50"
-                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-                    disabled={pagina === totalPaginas}
-                  >
-                    Próxima
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          </motion.div>
         </div>
       </PageTransition>
     </ProtectedRoute>

@@ -1,8 +1,15 @@
-import { createClient } from "@supabase/supabase-js"
+import { createServerClient, createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kpfxsmqshvqrzpuwycww.supabase.co"
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtwZnhzbXFzaHZxcnpwdXd5Y3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NTYyNTgsImV4cCI6MjA1OTQzMjI1OH0.At0_KNHm7ZpGNXfuJIgsgRl-_ZbeO2BgcQm-AjG87UA"
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Supabase environment variables are not set!")
+}
+
+export const createSupabaseServerClient = (cookies: any) =>
+  createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies,
+  })
+
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)

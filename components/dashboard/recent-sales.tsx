@@ -6,6 +6,7 @@ import { formatarValorMonetario, normalizarProposta } from "@/lib/utils/normaliz
 import { formatarNomeSeguradora } from "@/utils/formatters"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { mascararCPF } from "@/utils/mascarar"
 
 export function RecentSales() {
   const [vendas, setVendas] = useState<any[]>([])
@@ -45,6 +46,7 @@ export function RecentSales() {
         <div key={venda.id} className="flex items-center justify-between border-b border-gray-800 pb-4 last:border-b-0">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{venda.segurado.nome}</p>
+            <p className="text-xs text-muted-foreground">CPF: {mascararCPF(venda.segurado.cpf)}</p>
             <p className="text-sm text-muted-foreground">
               {format(new Date(venda.criado_em), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
             </p>

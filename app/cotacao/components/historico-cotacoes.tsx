@@ -74,25 +74,32 @@ export function HistoricoCotacoes({ onSelect }: HistoricoCotacoesProps) {
   }
 
   const excluirCotacao = async (id: string) => {
+    console.log("Iniciando exclusão da cotação:", id)
     try {
       // Primeiro, remova do Supabase
+      console.log("Enviando requisição para o Supabase...")
       const { error } = await supabase.from("cotacoes").delete().eq("id", id)
 
       if (error) {
+        console.error("Erro do Supabase ao excluir:", error)
         throw error
       }
 
-      // Se a exclusão no Supabase for bem-sucedida, atualize a interface
-      setCotacoes(cotacoes.filter((cotacao) => cotacao.id !== id))
+      console.log("Cotação excluída com sucesso do Supabase")
+      
+      // Atualizar o estado local imediatamente
+      setCotacoes((prev) => {
+        console.log("Atualizando estado local...")
+        const novasCotacoes = prev.filter((cotacao) => cotacao.id !== id)
+        console.log("Novo estado:", novasCotacoes)
+        return novasCotacoes
+      })
 
-      // Usar setTimeout para garantir que o toast seja exibido após o AlertDialog fechar
-      setTimeout(() => {
-        toast({
-          title: "Cotação excluída",
-          description: "A cotação foi removida com sucesso do banco de dados.",
-          variant: "default",
-        })
-      }, 100)
+      toast({
+        title: "Cotação excluída",
+        description: "A cotação foi removida com sucesso do banco de dados.",
+        variant: "default",
+      })
     } catch (error) {
       console.error("Erro ao excluir cotação:", error)
       toast({
@@ -187,7 +194,7 @@ export function HistoricoCotacoes({ onSelect }: HistoricoCotacoesProps) {
                     </div>
                     <p className="text-xs text-muted-foreground">{formatarData(cotacao.data)}</p>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-2">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -205,26 +212,15 @@ export function HistoricoCotacoes({ onSelect }: HistoricoCotacoesProps) {
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <motion.div
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                              >
-                                <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </motion.div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Excluir cotação</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
@@ -236,8 +232,11 @@ export function HistoricoCotacoes({ onSelect }: HistoricoCotacoesProps) {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => excluirCotacao(cotacao.id)}
-                            className="bg-red-600 hover:bg-red-700"
+                            onClick={() => {
+                              console.log("Botão de exclusão clicado para ID:", cotacao.id)
+                              excluirCotacao(cotacao.id)
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white"
                           >
                             Excluir
                           </AlertDialogAction>
