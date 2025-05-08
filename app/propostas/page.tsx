@@ -45,6 +45,7 @@ type PropostaProcessada = {
 }
 
 export default function PropostasPage() {
+  // Todos os hooks devem estar no topo
   const [propostas, setPropostas] = useState<any[]>([])
   const [propostasFiltradas, setPropostasFiltradas] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -53,15 +54,34 @@ export default function PropostasPage() {
   const [novaPropostaId, setNovaPropostaId] = useState<string | null>(null)
   const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
 
-  // Efeito para lidar com atualizações de propostas
-  useEffect(() => {
-    if (propostaAtualizada) {
-      setPropostas((prev) =>
-        prev.map((p) => (p.id === propostaAtualizada.id ? propostaAtualizada : p))
-      )
-      setPropostaAtualizada(null)
+  const fetchPropostas = async () => {
+    try {
+      setIsLoading(true)
+      console.log("Iniciando busca de propostas...")
+      const { data, error } = await supabase
+        .from("ocr_processamento")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .limit(50)
+
+      if (error) {
+        console.error("Erro na busca:", error)
+        throw error
+      }
+
+      console.log("Propostas encontradas:", data?.length || 0)
+      const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+      setPropostas(propostasNormalizadas)
+      setPropostasFiltradas(propostasNormalizadas)
+    } catch (error) {
+      console.error("Erro ao buscar propostas:", error)
+      toast.error("Erro ao carregar propostas", {
+        description: "Não foi possível carregar as propostas. Tente novamente mais tarde.",
+      })
+    } finally {
+      setIsLoading(false)
     }
-  }, [propostaAtualizada])
+  }
 
   useEffect(() => {
     fetchPropostas()
@@ -141,33 +161,11 @@ export default function PropostasPage() {
     setPropostasFiltradas(filtradas)
   }, [searchTerm, propostas])
 
-  const fetchPropostas = async () => {
-    try {
-      setIsLoading(true)
-      console.log("Iniciando busca de propostas...")
-      const { data, error } = await supabase
-        .from("ocr_processamento")
-        .select("*")
-        .order("criado_em", { ascending: false })
-        .limit(50)
-
-      if (error) {
-        console.error("Erro na busca:", error)
-        throw error
-      }
-
-      console.log("Propostas encontradas:", data?.length || 0)
-      const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
-      setPropostas(propostasNormalizadas)
-      setPropostasFiltradas(propostasNormalizadas)
-    } catch (error) {
-      console.error("Erro ao buscar propostas:", error)
-      toast.error("Erro ao carregar propostas", {
-        description: "Não foi possível carregar as propostas. Tente novamente mais tarde.",
-      })
-    } finally {
-      setIsLoading(false)
-    }
+  if (propostaAtualizada) {
+    setPropostas((prev) =>
+      prev.map((p) => (p.id === propostaAtualizada.id ? propostaAtualizada : p))
+    )
+    setPropostaAtualizada(null)
   }
 
   const excluirProposta = async () => {
@@ -328,140 +326,160 @@ export default function PropostasPage() {
   return (
     <ProtectedRoute>
       <PageTransition>
-    <div className="container py-8">
+        <div className="container py-8">
+          {/* Topo animado */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6"
+            className="mb-6"
           >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Propostas e Apólices</h1>
-          <p className="text-muted-foreground">Gerencie propostas e apólices processadas</p>
-        </div>
-        <div className="mt-4 md:mt-0">
-          <Button asChild>
-            <Link href="/propostas/upload">
-              <FileUpload className="mr-2 h-4 w-4" />
-              Nova Proposta
-            </Link>
-          </Button>
-        </div>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Propostas e Apólices</h1>
+                <p className="text-muted-foreground">Gerencie propostas e apólices processadas</p>
+              </div>
+              <div className="mt-4 md:mt-0">
+                <Button asChild>
+                  <Link href="/propostas/upload">
+                    <FileUpload className="mr-2 h-4 w-4" />
+                    Nova Proposta
+                  </Link>
+                </Button>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome, CPF, placa ou número da proposta..."
+                  className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <Tabs defaultValue="todas" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="todas">Todas</TabsTrigger>
+                <TabsTrigger value="concluidas">Concluídas</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </motion.div>
 
+          {/* Grid de cards animado, só aparece após o topo */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="mb-6"
+            transition={{ duration: 0.5, delay: 0.5 }}
           >
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, CPF, placa ou número da proposta..."
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-          </motion.div>
-
-      <Tabs defaultValue="todas" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="todas">Todas</TabsTrigger>
-          <TabsTrigger value="concluidas">Concluídas</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="todas" className="space-y-4">
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                    <Card key={i} className="animate-pulse bg-black dark:bg-black border border-gray-800">
-                  <CardHeader className="pb-2">
-                    <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
-                  </CardContent>
-                  <CardFooter>
-                    <div className="h-9 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          ) : propostasFiltradas.length > 0 ? (
+            <Tabs defaultValue="todas" className="space-y-4">
+              <TabsContent value="todas" className="space-y-4">
+                {isLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[...Array(6)].map((_, i) => (
+                      <Card key={i} className="animate-pulse bg-black dark:bg-black border border-gray-800">
+                        <CardHeader className="pb-2">
+                          <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+                          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+                          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                        </CardContent>
+                        <CardFooter>
+                          <div className="h-9 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                ) : propostasFiltradas.length > 0 ? (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.6 }}
+                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  >
+                    <AnimatePresence mode="popLayout">
+                      {propostasFiltradas.map((proposta, idx) => (
+                        <motion.div
+                          key={proposta.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 20 }}
+                          transition={{ duration: 1, delay: 0.7 + idx * 0.07 }}
+                        >
+                          {renderPropostaCard(proposta as PropostaProcessada)}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </motion.div>
+                ) : (
+                  <Card className="bg-black dark:bg-black border border-gray-800">
+                    <CardContent className="flex flex-col items-center justify-center py-8">
+                      <FilePlus className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">Nenhuma proposta encontrada</h3>
+                      <p className="text-muted-foreground text-center mb-4">
+                        {searchTerm
+                          ? "Nenhuma proposta corresponde à sua busca."
+                          : "Comece enviando uma nova proposta."}
+                      </p>
+                      <Button asChild>
+                        <Link href="/propostas/upload">
+                          <FileUpload className="mr-2 h-4 w-4" />
+                          Nova Proposta
+                        </Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+              <TabsContent value="concluidas" className="space-y-4">
                 <motion.div
                   layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.6 }}
                   className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                 >
                   <AnimatePresence mode="popLayout">
-                    {propostasFiltradas.map((proposta, idx) => (
-                      <motion.div
-                        key={proposta.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 20 }}
-                        transition={{ duration: 0.4, delay: idx * 0.07 }}
-                      >
-                        {renderPropostaCard(proposta as PropostaProcessada)}
-                      </motion.div>
-                    ))}
+                    {propostasFiltradas
+                      .filter((p) => p.status === "concluido")
+                      .map((proposta, idx) => (
+                        <motion.div
+                          key={proposta.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 20 }}
+                          transition={{ duration: 1, delay: 0.7 + idx * 0.07 }}
+                        >
+                          {renderPropostaCard(proposta as PropostaProcessada)}
+                        </motion.div>
+                      ))}
                   </AnimatePresence>
                 </motion.div>
-              ) : (
-                <Card className="bg-black dark:bg-black border border-gray-800">
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <FilePlus className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Nenhuma proposta encontrada</h3>
-                    <p className="text-muted-foreground text-center mb-4">
-                      {searchTerm
-                        ? "Nenhuma proposta corresponde à sua busca."
-                        : "Comece enviando uma nova proposta."}
-                    </p>
-                    <Button asChild>
-                      <Link href="/propostas/upload">
-                        <FileUpload className="mr-2 h-4 w-4" />
-                        Nova Proposta
-                      </Link>
-                    </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-            <TabsContent value="concluidas" className="space-y-4">
-              <motion.div
-                layout
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-              >
-                <AnimatePresence mode="popLayout">
-            {propostasFiltradas
-                    .filter((p) => p.status === "concluido")
-              .map((proposta) => renderPropostaCard(proposta as PropostaProcessada))}
-                </AnimatePresence>
-              </motion.div>
-        </TabsContent>
-      </Tabs>
+              </TabsContent>
+            </Tabs>
+          </motion.div>
 
           <AlertDialog open={!!propostaParaExcluir} onOpenChange={() => setPropostaParaExcluir(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+            <AlertDialogContent>
+              <AlertDialogHeader>
                 <AlertDialogTitle>Excluir proposta</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction onClick={excluirProposta} className="bg-red-500 hover:bg-red-600">
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </PageTransition>
     </ProtectedRoute>
   )
