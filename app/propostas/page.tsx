@@ -28,9 +28,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 type PropostaProcessada = {
   id: string
   status: string
-  resultado: any
   criado_em?: string
   created_at?: string
+  proposta: {
+    numero?: string
+    cia_seguradora?: string
+  }
+  segurado: {
+    nome?: string
+    cpf?: string
+  }
+  veiculo: {
+    marca_modelo?: string
+    placa?: string
+  }
 }
 
 export default function PropostasPage() {
