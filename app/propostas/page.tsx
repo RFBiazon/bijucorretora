@@ -212,7 +212,7 @@ export default function PropostasPage() {
     }
   }
 
-  const renderPropostaCard = (proposta) => {
+  const renderPropostaCard = (proposta: PropostaProcessada) => {
     const isNovaProposta = proposta.id === novaPropostaId
 
     return (
@@ -394,7 +394,7 @@ export default function PropostasPage() {
                         exit={{ opacity: 0, y: 20 }}
                         transition={{ duration: 0.4, delay: idx * 0.07 }}
                       >
-                        {renderPropostaCard(proposta)}
+                        {renderPropostaCard(proposta as PropostaProcessada)}
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -428,7 +428,7 @@ export default function PropostasPage() {
                 <AnimatePresence mode="popLayout">
             {propostasFiltradas
                     .filter((p) => p.status === "concluido")
-              .map((proposta) => renderPropostaCard(proposta))}
+              .map((proposta) => renderPropostaCard(proposta as PropostaProcessada))}
                 </AnimatePresence>
               </motion.div>
         </TabsContent>
