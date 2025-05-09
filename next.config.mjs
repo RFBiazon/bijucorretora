@@ -22,7 +22,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://n8n.neosystemsai.com",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://n8n.neosystemsai.com",
               "frame-ancestors 'none'",
               "object-src 'none'"
             ].join('; ')
