@@ -478,78 +478,90 @@ export default function PropostaDetalhesPage() {
                     transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Segurado</CardTitle>
-                          <CardDescription>Dados pessoais e contato</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          <div>
-                            <Label>Nome</Label>
-                            <Input value={(editedProposta as any)?.segurado?.nome || ""} onChange={(e) => handleInputChange("segurado", "nome", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>CPF</Label>
-                            <Input value={(editedProposta as any)?.segurado?.cpf || ""} onChange={(e) => handleInputChange("segurado", "cpf", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Data de Nascimento</Label>
-                            <Input value={(editedProposta as any)?.segurado?.nascimento || ""} onChange={(e) => handleInputChange("segurado", "nascimento", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Estado Civil</Label>
-                            <Input value={(editedProposta as any)?.segurado?.estado_civil || ""} onChange={(e) => handleInputChange("segurado", "estado_civil", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Profissão</Label>
-                            <Input value={(editedProposta as any)?.segurado?.profissao || ""} onChange={(e) => handleInputChange("segurado", "profissao", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Email</Label>
-                            <Input value={(editedProposta as any)?.segurado?.email || ""} onChange={(e) => handleInputChange("segurado", "email", e.target.value)} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Telefone</Label>
-                            <Input value={(editedProposta as any)?.segurado?.telefone || ""} onChange={(e) => handleInputChange("segurado", "telefone", e.target.value)} disabled={!isEditing} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Endereço</CardTitle>
-                          <CardDescription>Localização do segurado</CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <Label>Logradouro</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.logradouro || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "logradouro")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Número</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.numero || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "numero")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Complemento</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.complemento || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "complemento")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Bairro</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.bairro || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "bairro")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Cidade</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.cidade || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cidade")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>Estado</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.estado || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "estado")} disabled={!isEditing} />
-                          </div>
-                          <div>
-                            <Label>CEP</Label>
-                            <Input value={(editedProposta as any)?.segurado?.endereco?.cep || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cep")} disabled={!isEditing} />
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <MotionDiv
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.4, delay: 0.1, ease: [0.4, 0, 0.2, 1] }}
+                      >
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Segurado</CardTitle>
+                            <CardDescription>Dados pessoais e contato</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div>
+                              <Label>Nome</Label>
+                              <Input value={(editedProposta as any)?.segurado?.nome || ""} onChange={(e) => handleInputChange("segurado", "nome", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>CPF</Label>
+                              <Input value={(editedProposta as any)?.segurado?.cpf || ""} onChange={(e) => handleInputChange("segurado", "cpf", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Data de Nascimento</Label>
+                              <Input value={(editedProposta as any)?.segurado?.nascimento || ""} onChange={(e) => handleInputChange("segurado", "nascimento", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Estado Civil</Label>
+                              <Input value={(editedProposta as any)?.segurado?.estado_civil || ""} onChange={(e) => handleInputChange("segurado", "estado_civil", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Profissão</Label>
+                              <Input value={(editedProposta as any)?.segurado?.profissao || ""} onChange={(e) => handleInputChange("segurado", "profissao", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Email</Label>
+                              <Input value={(editedProposta as any)?.segurado?.email || ""} onChange={(e) => handleInputChange("segurado", "email", e.target.value)} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Telefone</Label>
+                              <Input value={(editedProposta as any)?.segurado?.telefone || ""} onChange={(e) => handleInputChange("segurado", "telefone", e.target.value)} disabled={!isEditing} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </MotionDiv>
+                      <MotionDiv
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.4, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                      >
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Endereço</CardTitle>
+                            <CardDescription>Localização do segurado</CardDescription>
+                          </CardHeader>
+                          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label>Logradouro</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.logradouro || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "logradouro")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Número</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.numero || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "numero")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Complemento</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.complemento || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "complemento")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Bairro</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.bairro || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "bairro")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Cidade</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.cidade || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cidade")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>Estado</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.estado || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "estado")} disabled={!isEditing} />
+                            </div>
+                            <div>
+                              <Label>CEP</Label>
+                              <Input value={(editedProposta as any)?.segurado?.endereco?.cep || ""} onChange={(e) => handleInputChange("segurado", "endereco", e.target.value, "endereco", "cep")} disabled={!isEditing} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </MotionDiv>
                     </div>
                   </MotionDiv>
                 )}
@@ -918,8 +930,12 @@ export default function PropostaDetalhesPage() {
                     exit={{ opacity: 0, scale: 0.95, y: -20 }}
                     transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                   >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <MotionDiv initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                      <MotionDiv
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.4, delay: 0.1, ease: [0.4, 0, 0.2, 1] }}
+                        >
                         <Card className="bg-black dark:bg-black border border-gray-800">
                           <CardHeader>
                             <CardTitle>Valores</CardTitle>
@@ -956,7 +972,11 @@ export default function PropostaDetalhesPage() {
                           </CardContent>
                         </Card>
                       </MotionDiv>
-                      <MotionDiv initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.15 }}>
+                      <MotionDiv 
+                        initial={{ opacity: 0, x: 20 }} 
+                        animate={{ opacity: 1, x: 0 }} 
+                        transition={{ duration: 0.4, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                      >
                         <Card className="bg-black dark:bg-black border border-gray-800">
                           <CardHeader>
                             <CardTitle>Pagamento</CardTitle>
