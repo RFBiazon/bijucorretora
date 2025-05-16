@@ -279,6 +279,7 @@ export default function PropostasPage() {
   const propostasFiltradasPorTab = propostasFiltradas.filter((p) => {
     if (tab === "apolices") return p.tipo_documento === "apolice";
     if (tab === "propostas") return p.tipo_documento === "proposta";
+    if (tab === "endossos") return p.tipo_documento === "endosso";
     return true;
   });
 
@@ -389,8 +390,9 @@ export default function PropostasPage() {
             <Tabs value={tab} onValueChange={setTab} className="space-y-4">
               <TabsList>
                 <TabsTrigger value="todas">Todas</TabsTrigger>
-                <TabsTrigger value="apolices">Apólices</TabsTrigger>
                 <TabsTrigger value="propostas">Propostas</TabsTrigger>
+                <TabsTrigger value="apolices">Apólices</TabsTrigger>
+                <TabsTrigger value="endossos">Endossos</TabsTrigger>
               </TabsList>
             </Tabs>
           </motion.div>
