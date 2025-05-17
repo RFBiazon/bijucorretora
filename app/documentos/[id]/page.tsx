@@ -177,6 +177,42 @@ export default function PropostaDetalhesPage() {
     }
   }
 
+  const handleConverterEmApolice = async () => {
+    if (!proposta) return;
+    try {
+      const { error } = await supabase
+        .from("ocr_processamento")
+        .update({ resultado: { ...proposta.resultado, tipo_documento: "apolice" }, tipo_documento: "apolice" })
+        .eq("id", params.id)
+
+      if (error) throw error
+
+      toast.success("Documento convertido em apólice com sucesso!")
+      router.push("/documentos?tab=apolices")
+    } catch (error) {
+      console.error("Erro ao converter em apólice:", error)
+      toast.error("Erro ao converter em apólice")
+    }
+  }
+
+  const handleConverterEmProposta = async () => {
+    if (!proposta) return;
+    try {
+      const { error } = await supabase
+        .from("ocr_processamento")
+        .update({ resultado: { ...proposta.resultado, tipo_documento: "proposta" }, tipo_documento: "proposta" })
+        .eq("id", params.id)
+
+      if (error) throw error
+
+      toast.success("Documento convertido em proposta com sucesso!")
+      router.push("/documentos?tab=propostas")
+    } catch (error) {
+      console.error("Erro ao converter em proposta:", error)
+      toast.error("Erro ao converter em proposta")
+    }
+  }
+
   if (isLoading) {
     return (
       <ProtectedRoute>
@@ -289,9 +325,27 @@ export default function PropostaDetalhesPage() {
                 Voltar
               </Button>
               <Button onClick={() => setIsEditing(true)}>Editar dados</Button>
+              {(proposta as any)?.tipo_documento === "proposta" && (
+                <Button 
+                  variant="default" 
+                  onClick={handleConverterEmApolice}
+                  className="!bg-green-600 !text-white !border-none"
+                >
+                  Converter em Apólice
+                </Button>
+              )}
+              {(proposta as any)?.tipo_documento === "apolice" && (
+                <Button 
+                  variant="default" 
+                  onClick={handleConverterEmProposta}
+                  className="!bg-blue-600 !text-white !border-none"
+                >
+                  Converter em Proposta
+                </Button>
+              )}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive">Cancelar Documento</Button>
+                  <Button variant="default" className="!bg-red-600 !text-white !border-none">Cancelar Documento</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -302,7 +356,7 @@ export default function PropostaDetalhesPage() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Voltar</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleCancelarDocumento} className="bg-red-500 hover:bg-red-600">
+                    <AlertDialogAction onClick={handleCancelarDocumento} className="!bg-red-600 !text-white !border-none">
                       Confirmar Cancelamento
                     </AlertDialogAction>
                   </AlertDialogFooter>

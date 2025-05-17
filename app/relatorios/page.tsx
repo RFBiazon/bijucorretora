@@ -13,6 +13,11 @@ import { formatarValorMonetario, normalizarProposta } from "@/lib/utils/normaliz
 import { capitalize, capitalizeWords, formatarNomeSeguradora, formatarNomeCorretor } from "@/utils/formatters"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { motion } from "framer-motion"
+import { format, startOfMonth, endOfDay } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { DateRange } from "react-day-picker"
 
 interface Proposta {
   id: string
@@ -65,6 +70,9 @@ function normalizarNomeSeguradora(nome: string): string {
 
 // Função para exibir o nome curto da seguradora
 function formatarNomeSeguradoraCurto(nome: string): string {
+  const normalizado = normalizarNomeSeguradora(nome);
+  if (normalizado.includes("porto")) return "Porto Seguro";
+  if (normalizado.includes("suhai")) return "Suhai";
   const mapa: Record<string, string> = {
     "yellum seguros": "Yelum",
     "yellum": "Yelum",
@@ -75,8 +83,8 @@ function formatarNomeSeguradoraCurto(nome: string): string {
     "bradesco": "Bradesco",
     "allianz seguros": "Allianz",
     "allianz": "Allianz",
-    "tokio marine seguradora": "Tokio",
-    "tokio marine": "Tokio",
+    "tokio marine seguradora": "Tokio Marine",
+    "tokio marine": "Tokio Marine",
     "azul companhia de seguros gerais": "Azul",
     "azul": "Azul",
     "hdi seguros": "HDI",
@@ -84,15 +92,14 @@ function formatarNomeSeguradoraCurto(nome: string): string {
     "itau": "Itaú",
     "mapfre": "Mapfre",
   };
-  const normalizado = normalizarNomeSeguradora(nome);
   return mapa[normalizado] || nome;
 }
 
 export default function RelatoriosPage() {
   const [propostas, setPropostas] = useState<any[]>([])
-  const [periodo, setPeriodo] = useState("todos")
-  const [seguradora, setSeguradora] = useState("todos")
+  const [vigenciaRange, setVigenciaRange] = useState<DateRange | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
+  const [tab, setTab] = useState("todas")
 
   // Paginação da tabela de propostas
   const [pagina, setPagina] = useState(1)
@@ -107,46 +114,69 @@ export default function RelatoriosPage() {
   const [rankingPremioOrder, setRankingPremioOrder] = useState<'desc' | 'asc'>('desc')
 
   useEffect(() => {
-    fetchPropostas()
-  }, [])
-
-  const fetchPropostas = async () => {
-    try {
+    const fetchByTab = async () => {
       setIsLoading(true)
+      let query = supabase.from("ocr_processamento").select("*").order("criado_em", { ascending: false })
+      // Se filtro de datas, aplicar no Supabase
+      if (vigenciaRange?.from && vigenciaRange?.to) {
+        const from = vigenciaRange.from.toISOString().split('T')[0]
+        const to = vigenciaRange.to.toISOString().split('T')[0]
+        query = query.gte('criado_em', from).lte('criado_em', to)
+      }
+      if (tab === "propostas") {
+        query = query.eq("tipo_documento", "proposta")
+      } else if (tab === "apolices") {
+        query = query.eq("tipo_documento", "apolice")
+      } else if (tab === "endossos") {
+        query = query.eq("tipo_documento", "endosso")
+      } else if (tab === "cancelados") {
+        query = query.eq("tipo_documento", "cancelado")
+      }
+      const { data, error } = await query
+      if (!error && data) {
+        const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+        setPropostas(propostasNormalizadas)
+      }
+      setIsLoading(false)
+    }
+    fetchByTab()
+  }, [tab, vigenciaRange])
+
+  // Busca apólices diretamente do Supabase
+  const fetchApolicesPorSeguradora = async () => {
+    try {
       const { data, error } = await supabase
         .from("ocr_processamento")
-        .select("*")
-        .order("criado_em", { ascending: false })
+        .select("proposta")
+        .eq("tipo_documento", "apolice")
 
       if (error) throw error
 
-      // Normaliza todas as propostas
-      const propostasNormalizadas = data.map(proposta => normalizarProposta(proposta))
-      setPropostas(propostasNormalizadas)
+      // Agrupa por seguradora
+      const agrupado: Record<string, number> = {}
+      data.forEach((item: any) => {
+        const seg = item.proposta?.cia_seguradora || "Não Informada"
+        const segNorm = normalizarNomeSeguradora(seg)
+        agrupado[segNorm] = (agrupado[segNorm] || 0) + 1
+      })
+      // Transforma em array e ordena
+      const arr = Object.entries(agrupado)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+      console.log('[DEBUG] Apólices por seguradora carregadas:', arr)
     } catch (error) {
-      console.error("Erro ao buscar propostas:", error)
-    } finally {
-      setIsLoading(false)
+      console.error('[DEBUG] Erro ao buscar apólices por seguradora:', error)
     }
   }
 
+  // Filtro de vigência: se não selecionado, usar mês atual
+  const hoje = new Date()
+  const inicioPadrao = startOfMonth(hoje)
+  const inicio = vigenciaRange?.from || inicioPadrao
+  const fim = vigenciaRange?.to ? endOfDay(vigenciaRange.to) : endOfDay(hoje)
   const propostasFiltradas = propostas.filter((proposta) => {
-    if (periodo === "todos" && seguradora === "todos") return true
-
     const dataProposta = new Date(proposta.criado_em)
-    const hoje = new Date()
-    const trintaDiasAtras = new Date(hoje.setDate(hoje.getDate() - 30))
-    const sessentaDiasAtras = new Date(hoje.setDate(hoje.getDate() - 60))
-
-    const filtroPeriodo =
-      periodo === "todos" ||
-      (periodo === "30dias" && dataProposta >= trintaDiasAtras) ||
-      (periodo === "60dias" && dataProposta >= sessentaDiasAtras)
-
-    const filtroSeguradora =
-      seguradora === "todos" || proposta.proposta.cia_seguradora === seguradora
-
-    return filtroPeriodo && filtroSeguradora
+    return dataProposta >= inicio && dataProposta <= fim
   })
 
   const seguradorasNormalizadas = Array.from(new Set(propostas.map((p) => normalizarNomeSeguradora(p.proposta.cia_seguradora))));
@@ -254,6 +284,31 @@ export default function RelatoriosPage() {
     .map(([name, value]) => ({ name: capitalizeWords(name), value }))
     .sort((a, b) => rankingPremioOrder === 'desc' ? b.value - a.value : a.value - b.value);
 
+  // 1. Propostas por Seguradora (apenas propostas)
+  const propostasPorSeguradora = seguradorasNormalizadas.map((seg) => ({
+    name: seg,
+    value: propostasFiltradas.filter((p) => normalizarNomeSeguradora(p.proposta.cia_seguradora) === seg && (p.tipo_documento || (p.resultado && p.resultado.tipo_documento)) === 'proposta').length,
+  })).sort((a, b) => b.value - a.value)
+
+  // 2. Apólices por Seguradora (agora agrupando diretamente do array propostas)
+  const apolicesPorSeguradora = seguradorasNormalizadas.map((seg) => ({
+    name: seg,
+    value: propostas.filter(
+      (p) => normalizarNomeSeguradora(p.proposta.cia_seguradora) === seg && (p.tipo_documento || (p.resultado && p.resultado.tipo_documento)) === 'apolice'
+    ).length,
+  })).sort((a, b) => b.value - a.value)
+
+  // 3. Ranking de prêmio total (propostas + apólices + endossos)
+  const premioTotalPorSeguradora: Record<string, number> = {};
+  propostas.forEach((p) => {
+    const nomeSeg = normalizarNomeSeguradora(p.proposta.cia_seguradora);
+    const valor = formatarValorMonetario(p.valores.preco_total);
+    premioTotalPorSeguradora[nomeSeg] = (premioTotalPorSeguradora[nomeSeg] || 0) + valor;
+  });
+  const rankingPremioTotal = Object.entries(premioTotalPorSeguradora)
+    .map(([name, value]) => ({ name: capitalizeWords(name), value: value as number }))
+    .sort((a, b) => (b.value as number) - (a.value as number));
+
   return (
     <ProtectedRoute>
       <PageTransition>
@@ -262,44 +317,47 @@ export default function RelatoriosPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6"
+            className="flex flex-col md:flex-row justify-between items-center mb-6"
           >
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
-              <p className="text-muted-foreground">Visualize relatórios e estatísticas</p>
-            </div>
-            <div className="flex gap-4 mt-4 md:mt-0">
-              <Select value={periodo} onValueChange={setPeriodo}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="30dias">Últimos 30 dias</SelectItem>
-                  <SelectItem value="60dias">Últimos 60 dias</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={seguradora} onValueChange={setSeguradora}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Seguradora" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas</SelectItem>
-                  {seguradorasNormalizadas.map((seg, idx) => (
-                    <SelectItem key={seg + '-' + idx} value={seg}>
-                      {formatarNomeSeguradoraCurto(seg)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <h1 className="text-3xl font-bold">Relatórios</h1>
+            <div className="flex items-center gap-2 ml-auto">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline">{vigenciaRange?.from ? `${format(vigenciaRange.from, 'dd/MM/yyyy')} - ${vigenciaRange.to ? format(vigenciaRange.to, 'dd/MM/yyyy') : format(vigenciaRange.from, 'dd/MM/yyyy')}` : `Selecione o período`}</Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-auto min-w-[340px] p-0">
+                  <Calendar
+                    mode="range"
+                    selected={vigenciaRange}
+                    onSelect={setVigenciaRange}
+                    numberOfMonths={2}
+                    locale={ptBR}
+                  />
+                  <div className="flex justify-end p-2">
+                    <Button size="sm" variant="ghost" onClick={() => setVigenciaRange(undefined)}>
+                      Limpar datas
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </motion.div>
+
+          <Tabs value={tab} onValueChange={setTab} className="mb-6">
+            <TabsList>
+              <TabsTrigger value="todas">Todas</TabsTrigger>
+              <TabsTrigger value="propostas">Propostas</TabsTrigger>
+              <TabsTrigger value="apolices">Apólices</TabsTrigger>
+              <TabsTrigger value="endossos">Endossos</TabsTrigger>
+              <TabsTrigger value="cancelados">Cancelados</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="grid gap-4 md:grid-cols-3 mb-6"
           >
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
@@ -307,10 +365,18 @@ export default function RelatoriosPage() {
                 <CardDescription>Número total de propostas processadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{propostasFiltradas.length}</div>
+                <div className="text-2xl font-bold">{propostas.length}</div>
               </CardContent>
             </Card>
-
+            <Card className="bg-black dark:bg-black border border-gray-800">
+              <CardHeader>
+                <CardTitle>Total de Apólices</CardTitle>
+                <CardDescription>Número total de apólices processadas</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{propostas.filter(p => (p.tipo_documento || (p.resultado && p.resultado.tipo_documento)) === 'apolice').length}</div>
+              </CardContent>
+            </Card>
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
                 <CardTitle>Prêmio Total</CardTitle>
@@ -318,7 +384,7 @@ export default function RelatoriosPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {propostasFiltradas.reduce((acc, p) => acc + parseValor(p.valores.preco_total), 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  {propostas.reduce((acc, p) => acc + parseValor(p.valores.preco_total), 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </div>
               </CardContent>
             </Card>
@@ -330,14 +396,15 @@ export default function RelatoriosPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="mt-8 grid gap-4 md:grid-cols-3"
           >
+            {/* 1. Propostas por Seguradora */}
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
                 <CardTitle>Propostas por Seguradora</CardTitle>
-                <CardDescription>Distribuição de propostas por seguradora</CardDescription>
+                <CardDescription>Número de propostas por seguradora</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {dadosPorSeguradora.map((item, idx) => (
+                  {propostasPorSeguradora.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
                       <span>{formatarNomeSeguradoraCurto(item.name)}</span>
                       <span className="font-bold">{item.value}</span>
@@ -346,14 +413,15 @@ export default function RelatoriosPage() {
                 </ul>
               </CardContent>
             </Card>
+            {/* 2. Apólices por Seguradora (agora agrupando diretamente do array propostas) */}
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
-                <CardTitle>Seguradoras</CardTitle>
-                <CardDescription>Ranking de Propostas por Seguradora</CardDescription>
+                <CardTitle>Apólices por Seguradora</CardTitle>
+                <CardDescription>Número de apólices por seguradora</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {rankingSeguradoras.map((item, idx) => (
+                  {apolicesPorSeguradora.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
                       <span>{formatarNomeSeguradoraCurto(item.name)}</span>
                       <span className="font-bold">{item.value}</span>
@@ -362,16 +430,15 @@ export default function RelatoriosPage() {
                 </ul>
               </CardContent>
             </Card>
+            {/* 3. Ranking de Prêmio Total */}
             <Card className="bg-black dark:bg-black border border-gray-800">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Ranking</CardTitle>                           
-                <button onClick={() => setRankingPremioOrder(o => o === 'desc' ? 'asc' : 'desc')} className="ml-2 text-muted-foreground hover:text-primary transition-colors">
-                  {rankingPremioOrder === 'desc' ? <ArrowDown className="inline w-4 h-4" /> : <ArrowUp className="inline w-4 h-4" />}
-                </button>
+              <CardHeader>
+                <CardTitle>Ranking</CardTitle>
+                <CardDescription>Prêmio Total</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {rankingPremioSeguradora.map((item, idx) => (
+                  {rankingPremioTotal.map((item, idx) => (
                     <li key={item.name + '-' + idx} className="flex justify-between items-center border-b border-gray-800 pb-2 last:border-b-0">
                       <span className="truncate max-w-[60%]">{formatarNomeSeguradoraCurto(item.name)}</span>
                       <span className="font-bold text-right min-w-[120px]">{Number(item.value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>

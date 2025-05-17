@@ -25,12 +25,13 @@ import { DayPickerRangeProps, DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { useDayPicker } from 'react-day-picker';
+import { Popover as Tooltip, PopoverTrigger as TooltipTrigger, PopoverContent as TooltipContent } from "@/components/ui/popover"
 
 const COLS = [
   { key: "tipo_documento", label: "Tipo" },
-  { key: "numero", label: "Número" },
+  { key: "numero", label: "Documento nº" },
   { key: "segurado", label: "Segurado" },
-  { key: "cpf", label: "CPF" },
+  { key: "cpf", label: "CPF/CNPJ" },
   { key: "placa", label: "Placa" },
   { key: "veiculo", label: "Veículo" },
   { key: "cia_seguradora", label: "Seguradora" },
@@ -144,6 +145,7 @@ export default function TabelaDocumentosPage() {
     vigencia_inicio: "",
     vigencia_fim_range: "",
   });
+  const [searchTerm, setSearchTerm] = useState("");
   const [sort, setSort] = useState<{ key: string; asc: boolean }>({ key: "", asc: true });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -153,21 +155,42 @@ export default function TabelaDocumentosPage() {
   const [vigenciaRange, setVigenciaRange] = useState<DateRange | undefined>(undefined);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
 
-  useEffect(() => {
-    async function fetchDocumentos() {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from("ocr_processamento")
-        .select("*")
-        .order("criado_em", { ascending: false })
-        .limit(100);
-      if (!error && data) {
-        setDocumentos(data.map((d: any) => normalizarProposta(d)));
-      }
-      setIsLoading(false);
+  // Nova função para buscar documentos com filtro
+  async function fetchDocumentos(filtros: Partial<typeof filters> = {}) {
+    setIsLoading(true);
+    let query = supabase.from("ocr_processamento").select("*").order("criado_em", { ascending: false });
+    // Desestruturar com valor padrão vazio
+    const {
+      tipo_documento: filtro_tipo_documento = "",
+      numero: filtro_numero = "",
+      segurado: filtro_segurado = "",
+      cpf: filtro_cpf = "",
+      placa: filtro_placa = "",
+      veiculo: filtro_veiculo = "",
+      cia_seguradora: filtro_cia_seguradora = ""
+    } = filtros;
+    if (filtro_tipo_documento) query = query.ilike("tipo_documento", `%${filtro_tipo_documento}%`);
+    if (filtro_numero) query = query.or(`apolice.ilike.%${filtro_numero}%,numero.ilike.%${filtro_numero}%,endosso.ilike.%${filtro_numero}%`);
+    if (filtro_segurado) query = query.ilike("segurado->>nome", `%${filtro_segurado}%`);
+    if (filtro_cpf) query = query.ilike("segurado->>cpf", `%${filtro_cpf}%`);
+    if (filtro_placa) query = query.ilike("veiculo->>placa", `%${filtro_placa}%`);
+    if (filtro_veiculo) query = query.ilike("veiculo->>marca_modelo", `%${filtro_veiculo}%`);
+    if (filtro_cia_seguradora) query = query.ilike("proposta->>cia_seguradora", `%${filtro_cia_seguradora}%`);
+    // Se não houver busca, limitar para não sobrecarregar
+    if (!filtro_tipo_documento && !filtro_numero && !filtro_segurado && !filtro_cpf && !filtro_placa && !filtro_veiculo && !filtro_cia_seguradora) {
+      query = query.limit(100);
     }
-    fetchDocumentos();
-  }, []);
+    const { data, error } = await query;
+    if (!error && data) {
+      setDocumentos(data.map((d: any) => normalizarProposta(d)));
+    }
+    setIsLoading(false);
+  }
+
+  // Atualizar busca ao digitar
+  useEffect(() => {
+    fetchDocumentos(filters);
+  }, [filters]);
 
   // Função para converter dd/mm/aaaa ou outros formatos em Date
   function parseDataVigenciaToDate(data: string | undefined): Date | null {
@@ -369,8 +392,23 @@ export default function TabelaDocumentosPage() {
                             {col.label}
                           </span>
                         </PopoverTrigger>
-                        <PopoverContent align="center" className="w-64 p-3 bg-neutral-900 border border-gray-700 shadow-lg animate-fade-in">
-                          {col.key === "tipo_documento" ? (
+                        <PopoverContent align="center" className="w-auto min-w-[340px] p-0">
+                          {col.key === "vigencia_fim" ? (
+                            <>
+                              <Calendar
+                                mode="range"
+                                selected={vigenciaRange}
+                                onSelect={setVigenciaRange}
+                                numberOfMonths={2}
+                                locale={ptBR}
+                              />
+                              <div className="flex justify-end p-2">
+                                <Button size="sm" variant="ghost" onClick={() => setVigenciaRange(undefined)}>
+                                  Limpar datas
+                                </Button>
+                              </div>
+                            </>
+                          ) : col.key === "tipo_documento" ? (
                             <select
                               className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
                               value={filters.tipo_documento}
@@ -382,26 +420,6 @@ export default function TabelaDocumentosPage() {
                               <option value="endosso">Endosso</option>
                               <option value="cancelado">Cancelado</option>
                             </select>
-                          ) : col.key === "vigencia_fim" ? (
-                            <Calendar
-                              mode="range"
-                              selected={vigenciaRange}
-                              onSelect={(range) => setVigenciaRange(range)}
-                              numberOfMonths={1}
-                              locale={ptBR}
-                              className="text-xs"
-                              month={calendarMonth}
-                              onMonthChange={setCalendarMonth}
-                              classNames={{
-                                day_range_middle: "bg-neutral-700 text-white",
-                                day_selected: "bg-primary text-primary-foreground",
-                                day: "text-xs",
-                                caption_label: "text-xs font-semibold",
-                              }}
-                              components={{
-                                Caption: (props) => <CustomCaption {...props} calendarMonth={calendarMonth} setCalendarMonth={setCalendarMonth} />
-                              }}
-                            />
                           ) : (
                             <input
                               className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
@@ -461,38 +479,83 @@ export default function TabelaDocumentosPage() {
                         className="border-t border-gray-800 hover:bg-neutral-800 transition"
                       >
                         {COLS.map((col) => (
-                          <td key={col.key} className="px-4 py-2">
-                            {col.key === "tipo_documento"
-                              ? doc.tipo_documento.charAt(0).toUpperCase() + doc.tipo_documento.slice(1)
-                              : col.key === "numero"
-                                ? (doc.tipo_documento === "apolice"
-                                    ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
-                                    : doc.tipo_documento === "endosso"
-                                      ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
-                                      : doc.proposta.numero || doc.id.substring(0, 8))
-                                : col.key === "segurado"
-                                  ? doc.segurado.nome
-                                  : col.key === "cpf"
-                                    ? doc.segurado.cpf
-                                    : col.key === "placa"
-                                      ? doc.veiculo.placa
-                                      : col.key === "veiculo"
-                                        ? doc.veiculo.marca_modelo
-                                        : col.key === "cia_seguradora"
-                                          ? formatarNomeSeguradora(doc.proposta.cia_seguradora)
-                                          : col.key === "vigencia_fim"
-                                            ? parseDataVigencia(doc.proposta.vigencia_fim)
-                                            : ""
-                            }
+                          <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${col.key === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
+                            {(() => {
+                              let value = '';
+                              if (col.key === "tipo_documento") {
+                                value = doc.tipo_documento.charAt(0).toUpperCase() + doc.tipo_documento.slice(1);
+                              } else if (col.key === "numero") {
+                                let numero = doc.tipo_documento === "apolice"
+                                  ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
+                                  : doc.tipo_documento === "endosso"
+                                    ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
+                                    : doc.proposta.numero || doc.id.substring(0, 8);
+                                const seguradora = (doc.proposta.cia_seguradora || '').toLowerCase();
+                                if (seguradora.includes('hdi')) {
+                                  if (numero && numero.includes('.')) {
+                                    numero = numero.split('.').pop();
+                                  }
+                                } else if (seguradora.includes('allianz') && doc.tipo_documento === 'apolice') {
+                                  if (numero && numero.length > 7) {
+                                    numero = numero.slice(-7);
+                                  }
+                                }
+                                value = numero;
+                              } else if (col.key === "segurado") {
+                                value = doc.segurado.nome;
+                              } else if (col.key === "cpf") {
+                                value = doc.segurado.cpf;
+                              } else if (col.key === "placa") {
+                                value = doc.veiculo.placa;
+                              } else if (col.key === "veiculo") {
+                                const modelo = doc.veiculo.marca_modelo;
+                                const ano_modelo = doc.veiculo.ano_modelo && doc.veiculo.ano_modelo !== 'Não informado' ? doc.veiculo.ano_modelo : '';
+                                const ano_fabricacao = doc.veiculo.ano_fabricacao && doc.veiculo.ano_fabricacao !== 'Não informado' ? doc.veiculo.ano_fabricacao : '';
+                                let veiculoStr = modelo;
+                                if (ano_fabricacao || ano_modelo) {
+                                  veiculoStr += ` - ${ano_fabricacao}${ano_modelo ? `/${ano_modelo}` : ''}`;
+                                }
+                                value = veiculoStr;
+                              } else if (col.key === "cia_seguradora") {
+                                value = formatarNomeSeguradora(doc.proposta.cia_seguradora);
+                              } else if (col.key === "vigencia_fim") {
+                                value = parseDataVigencia(doc.proposta.vigencia_fim);
+                              }
+                              // Limites customizados
+                              if (col.key === "segurado") {
+                                return <span className="block" title={value}>{value}</span>;
+                              }
+                              let maxLen = 22;
+                              if (col.key === "veiculo") maxLen = 18;
+                              if (col.key === "cpf") maxLen = 18;
+                              if (col.key === "placa") maxLen = 7;
+                              const isLong = typeof value === 'string' && value.length > maxLen;
+                              if (col.key === "vigencia_fim") {
+                                return <span className="whitespace-nowrap">{value}</span>;
+                              }
+                              if (!isLong) {
+                                return <span className="truncate block" title={value}>{value}</span>;
+                              }
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="truncate block hover:underline text-blue-400" tabIndex={0}>{value.slice(0, maxLen)}...</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs break-words text-xs bg-neutral-900 border border-gray-700">
+                                    {value}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
                           </td>
                         ))}
                         <td className="px-4 py-2">
                           <div className="flex gap-2">
                             <Link href={`/documentos/${doc.id}`}>
-                              <Button size="sm" variant="outline">Ver</Button>
+                              <Button size="sm" variant="outline" className="px-2 py-1 text-xs">Ver</Button>
                             </Link>
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id} title="Excluir">
-                              <Trash2 className="w-4 h-4" />
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id} title="Excluir" className="px-2 py-1">
+                              <Trash2 className="w-2 h-2" />
                             </Button>
                           </div>
                         </td>

@@ -119,8 +119,6 @@ export default function PropostasPage() {
   }
 
   useEffect(() => {
-    fetchPropostas()
-
     // Configurar realtime subscription para novas propostas
     const channel = supabase
       .channel("propostas_changes")
@@ -167,34 +165,99 @@ export default function PropostasPage() {
   }, [])
 
   useEffect(() => {
-    if (searchTerm.trim() === "") {
-      setPropostasFiltradas(propostas)
-      return
+    const buscar = async () => {
+      if (searchTerm.trim() === "") {
+        setPropostasFiltradas(propostas)
+        return
+      }
+      setIsLoading(true)
+      const term = searchTerm.trim()
+      let resultados: any[] = []
+      // Regex para identificar padrões
+      const soLetras = /^[A-Za-zÀ-ÿ ]+$/
+      const placaRegex = /^[A-Za-z]{3}[0-9A-Za-z]{4}$/i
+      const soNumeros = /^[0-9]+$/
+      let debug = ''
+      if (soLetras.test(term) && term.length >= 4) {
+        // Buscar só por nome
+        debug = 'nome';
+        const { data } = await supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>nome", `%${term}%`).order("criado_em", { ascending: false })
+        resultados = data || []
+      } else if (placaRegex.test(term)) {
+        // Buscar só por placa
+        debug = 'placa';
+        const { data } = await supabase.from("ocr_processamento").select("*").ilike("resultado->veiculo->>placa", `%${term}%`).order("criado_em", { ascending: false })
+        resultados = data || []
+      } else if (soNumeros.test(term) && term.length >= 3) {
+        // Buscar por CPF, proposta e apólice
+        debug = 'numeros';
+        const [cpf, numero, apolice] = await Promise.all([
+          supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>cpf", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>numero", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>apolice", `%${term}%`).order("criado_em", { ascending: false }),
+        ])
+        resultados = [
+          ...(cpf.data || []),
+          ...(numero.data || []),
+          ...(apolice.data || []),
+        ]
+      }
+      // Fallback se não encontrou nada
+      if (resultados.length === 0) {
+        debug = 'fallback';
+        const [nome, cpf, placa, numero, apolice] = await Promise.all([
+          supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>nome", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>cpf", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->veiculo->>placa", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>numero", `%${term}%`).order("criado_em", { ascending: false }),
+          supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>apolice", `%${term}%`).order("criado_em", { ascending: false }),
+        ])
+        resultados = [
+          ...(nome.data || []),
+          ...(cpf.data || []),
+          ...(placa.data || []),
+          ...(numero.data || []),
+          ...(apolice.data || []),
+        ]
+      }
+      // Remover duplicados por id
+      const vistos = new Set()
+      const unicos = resultados.filter((item: any) => {
+        if (vistos.has(item.id)) return false
+        vistos.add(item.id)
+        return true
+      })
+      setPropostasFiltradas(unicos.map((proposta: any) => normalizarProposta(proposta)))
+      setIsLoading(false)
+      // Log para debug
+      console.log(`[BUSCA] termo: '${term}' | modo: ${debug} | encontrados: ${unicos.length}`)
     }
+    buscar()
+  }, [searchTerm])
 
-    const termLower = searchTerm.toLowerCase().trim()
-    const filtradas = propostas.filter((proposta) => {
-      // Busca por nome do segurado
-      const nome = proposta.segurado.nome?.toLowerCase() || ""
-      if (nome.includes(termLower)) return true
-
-      // Busca por CPF
-      const cpf = proposta.segurado.cpf?.toLowerCase() || ""
-      if (cpf.includes(termLower)) return true
-
-      // Busca por placa do veículo
-      const placa = proposta.veiculo.placa?.toLowerCase() || ""
-      if (placa.includes(termLower)) return true
-
-      // Busca por número da proposta
-      const numeroProposta = proposta.proposta.numero?.toLowerCase() || ""
-      if (numeroProposta.includes(termLower)) return true
-
-      return false
-    })
-
-    setPropostasFiltradas(filtradas)
-  }, [searchTerm, propostas])
+  useEffect(() => {
+    const fetchByTab = async () => {
+      setIsLoading(true)
+      let query = supabase.from("ocr_processamento").select("*").order("criado_em", { ascending: false }).limit(30)
+      if (tab === "propostas") {
+        query = query.eq("tipo_documento", "proposta")
+      } else if (tab === "apolices") {
+        query = query.eq("tipo_documento", "apolice")
+      } else if (tab === "endossos") {
+        query = query.eq("tipo_documento", "endosso")
+      } else if (tab === "cancelados") {
+        query = query.eq("tipo_documento", "cancelado")
+      }
+      const { data, error } = await query
+      if (!error && data) {
+        const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+        setPropostas(propostasNormalizadas)
+        setPropostasFiltradas(propostasNormalizadas)
+      }
+      setIsLoading(false)
+    }
+    fetchByTab()
+  }, [tab])
 
   useEffect(() => {
     if (tab !== tabToShow) {
@@ -292,14 +355,6 @@ export default function PropostasPage() {
     }
     return doc.proposta.numero || doc.id.substring(0, 8);
   };
-
-  const propostasFiltradasPorTab = propostasFiltradas.filter((p) => {
-    if (tab === "apolices") return p.tipo_documento === "apolice";
-    if (tab === "propostas") return p.tipo_documento === "proposta";
-    if (tab === "endossos") return p.tipo_documento === "endosso";
-    if (tab === "cancelados") return p.tipo_documento === "cancelado";
-    return true;
-  });
 
   const renderPropostaCard = (proposta: DocumentoProcessado) => {
     return (
@@ -454,13 +509,7 @@ export default function PropostasPage() {
                       >
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                       </motion.div>
-                    ) : propostasFiltradas.filter((p) => {
-                        if (tabToShow === "apolices") return p.tipo_documento === "apolice";
-                        if (tabToShow === "propostas") return p.tipo_documento === "proposta";
-                        if (tabToShow === "endossos") return p.tipo_documento === "endosso";
-                        if (tabToShow === "cancelados") return p.tipo_documento === "cancelado";
-                        return true;
-                      }).length > 0 ? (
+                    ) : propostasFiltradas.length > 0 ? (
                       <motion.div
                         key={tabToShow}
                         initial={{ opacity: 0, y: 20 }}
@@ -469,13 +518,7 @@ export default function PropostasPage() {
                         transition={{ duration: 0.3 }}
                         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
                       >
-                        {propostasFiltradas.filter((p) => {
-                          if (tabToShow === "apolices") return p.tipo_documento === "apolice";
-                          if (tabToShow === "propostas") return p.tipo_documento === "proposta";
-                          if (tabToShow === "endossos") return p.tipo_documento === "endosso";
-                          if (tabToShow === "cancelados") return p.tipo_documento === "cancelado";
-                          return true;
-                        }).map((proposta, idx) => (
+                        {propostasFiltradas.map((proposta, idx) => (
                           <motion.div
                             key={proposta.id}
                             initial={{ opacity: 0, y: 20 }}

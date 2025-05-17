@@ -41,7 +41,7 @@ export function normalizarProposta(json: PropostaJson) {
     return {
       id: validatedData.id ?? "",
       status: validatedData.status ?? "",
-      tipo_documento: (validatedData.tipo_documento as "proposta" | "apolice" | "endosso" | "cancelado") ?? "proposta",
+      tipo_documento: base.tipo_documento ?? (validatedData.tipo_documento as "proposta" | "apolice" | "endosso" | "cancelado") ?? "proposta",
       valores: {
         iof: base.valores?.iof ?? "Não informado",
         preco_total: base.valores?.preco_total ?? "Não informado",
