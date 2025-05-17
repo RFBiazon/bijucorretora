@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import type { DadosProposta, PropostaProcessada } from "@/types/proposta"
 import { formatarCamposProposta } from "@/utils/formatters"
@@ -29,6 +29,7 @@ import PageTransition from "@/components/PageTransition"
 import { AnimatePresence } from "framer-motion"
 import MotionDiv from "@/components/MotionDiv"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 type SectionKey = keyof DadosProposta
 type NestedField = keyof DadosProposta[SectionKey]
@@ -36,7 +37,6 @@ type NestedField = keyof DadosProposta[SectionKey]
 export default function PropostaDetalhesPage() {
   const params = useParams()
   const router = useRouter()
-  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [proposta, setProposta] = useState<PropostaProcessada | null>(null)
@@ -75,11 +75,7 @@ export default function PropostaDetalhesPage() {
         }
       } catch (error) {
         console.error("Erro ao buscar proposta:", error)
-        toast({
-          title: "Erro ao carregar proposta",
-          description: "Não foi possível carregar os detalhes da proposta.",
-          variant: "destructive",
-        })
+        toast.error("Erro ao carregar os detalhes da proposta.")
       } finally {
         setIsLoading(false)
       }
@@ -127,11 +123,7 @@ export default function PropostaDetalhesPage() {
     if (!proposta || !editedProposta) return
 
     if (!editedProposta.proposta.numero) {
-      toast({
-        title: "Número da proposta obrigatório",
-        description: "Preencha o número da proposta antes de salvar.",
-        variant: "destructive",
-      })
+      toast.error("Número da proposta obrigatório")
       return
     }
 
@@ -158,19 +150,30 @@ export default function PropostaDetalhesPage() {
       }
 
       setIsEditing(false)
-      toast({
-        title: "Alterações salvas",
-        description: "As alterações foram salvas com sucesso.",
-      })
+      toast.success("Alterações salvas com sucesso!")
     } catch (error) {
       console.error("Erro ao salvar alterações:", error)
-      toast({
-        title: "Erro ao salvar",
-        description: "Não foi possível salvar as alterações. Tente novamente.",
-        variant: "destructive",
-      })
+      toast.error("Erro ao salvar")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleCancelarDocumento = async () => {
+    try {
+      const { error } = await supabase
+        .from("ocr_processamento")
+        .update({ tipo_documento: "cancelado" })
+        .eq("id", params.id)
+
+      if (error) throw error
+
+      toast.success("Documento cancelado com sucesso!")
+      router.refresh()
+      router.push("/documentos")
+    } catch (error) {
+      console.error("Erro ao cancelar documento:", error)
+      toast.error("Erro ao cancelar documento")
     }
   }
 
@@ -286,6 +289,25 @@ export default function PropostaDetalhesPage() {
                 Voltar
               </Button>
               <Button onClick={() => setIsEditing(true)}>Editar dados</Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">Cancelar Documento</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancelar Documento</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Tem certeza que deseja cancelar este documento? Esta ação não pode ser desfeita.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Voltar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelarDocumento} className="bg-red-500 hover:bg-red-600">
+                      Confirmar Cancelamento
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
             </MotionDiv>
@@ -305,7 +327,7 @@ export default function PropostaDetalhesPage() {
           <TabsList className="flex-nowrap min-w-max">
             <TabsTrigger value="proposta">
               <FileText className="h-4 w-4 mr-2" />
-              Proposta
+              Documento
             </TabsTrigger>
             <TabsTrigger value="segurado">
               <User className="h-4 w-4 mr-2" />
@@ -315,13 +337,13 @@ export default function PropostaDetalhesPage() {
               <Car className="h-4 w-4 mr-2" />
               Veículo
             </TabsTrigger>
+            <TabsTrigger value="valores">
+              <CreditCard className="h-4 w-4 mr-2" />
+              Financeiro
+            </TabsTrigger>
             <TabsTrigger value="corretor">
               <Building className="h-4 w-4 mr-2" />
               Corretor
-            </TabsTrigger>
-            <TabsTrigger value="valores">
-              <CreditCard className="h-4 w-4 mr-2" />
-              Valores
             </TabsTrigger>
           </TabsList>
         </div>

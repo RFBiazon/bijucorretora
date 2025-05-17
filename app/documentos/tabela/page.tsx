@@ -380,6 +380,7 @@ export default function TabelaDocumentosPage() {
                               <option value="proposta">Proposta</option>
                               <option value="apolice">Apólice</option>
                               <option value="endosso">Endosso</option>
+                              <option value="cancelado">Cancelado</option>
                             </select>
                           ) : col.key === "vigencia_fim" ? (
                             <Calendar

@@ -6,7 +6,7 @@ export type PropostaJson = any;
 const PropostaSchema = z.object({
   id: z.string().optional(),
   status: z.string().optional(),
-  tipo_documento: z.enum(["proposta", "apolice", "endosso"]).optional(),
+  tipo_documento: z.enum(["proposta", "apolice", "endosso", "cancelado"]).optional(),
   valores: z.object({
     iof: z.string().optional(),
     preco_total: z.string().optional(),
@@ -41,7 +41,7 @@ export function normalizarProposta(json: PropostaJson) {
     return {
       id: validatedData.id ?? "",
       status: validatedData.status ?? "",
-      tipo_documento: (validatedData.tipo_documento as "proposta" | "apolice" | "endosso") ?? "proposta",
+      tipo_documento: (validatedData.tipo_documento as "proposta" | "apolice" | "endosso" | "cancelado") ?? "proposta",
       valores: {
         iof: base.valores?.iof ?? "Não informado",
         preco_total: base.valores?.preco_total ?? "Não informado",

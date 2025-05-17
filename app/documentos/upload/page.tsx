@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function UploadPage() {
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<{ file: File, tipo: "proposta" | "apolice" | "endosso" | "cancelado" }[]>([]);
   const [hasSent, setHasSent] = useState(false);
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -27,7 +27,6 @@ export default function UploadPage() {
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error" | "checking">("idle")
   const [propostaId, setPropostaId] = useState<string | null>(null)
   const [checkCount, setCheckCount] = useState(0)
-  const [tipoDocumento, setTipoDocumento] = useState<"proposta" | "apolice" | "endosso">("proposta")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
   const router = useRouter()
@@ -47,12 +46,12 @@ export default function UploadPage() {
     concluido: 'text-green-500',
     erro: 'text-red-500',
   };
-  const statusIcon: Record<string, React.ReactNode> = {
-    aguardando: <FileUp className="w-4 h-4 text-gray-400" />,
-    enviando: <Loader2 className="w-4 h-4 animate-spin text-blue-400" />,
-    processando: <Loader2 className="w-4 h-4 animate-spin text-blue-400" />,
-    concluido: <CheckCircle className="w-4 h-4 text-green-500" />,
-    erro: <AlertCircle className="w-4 h-4 text-red-500" />,
+  const statusIconMap: Record<string, React.ReactNode> = {
+    aguardando: <span title="Aguardando"><FileUp className="w-4 h-4 text-gray-400" /></span>,
+    enviando: <span title="Enviando"><Loader2 className="w-4 h-4 animate-spin text-blue-400" /></span>,
+    processando: <span title="Processando"><Loader2 className="w-4 h-4 animate-spin text-blue-400" /></span>,
+    concluido: <span title="Concluído"><CheckCircle className="w-4 h-4 text-green-500" /></span>,
+    erro: <span title="Erro"><AlertCircle className="w-4 h-4 text-red-500" /></span>,
   };
 
   // Verificar periodicamente se o registro foi criado no Supabase
@@ -108,10 +107,40 @@ export default function UploadPage() {
     }
   }, [propostaId, uploadStatus, checkCount, toast, router])
 
+  // Persistência da lista de arquivos no localStorage
+  useEffect(() => {
+    // Restaurar ao carregar
+    const saved = localStorage.getItem("upload_selected_files");
+    if (saved) {
+      try {
+        const arr = JSON.parse(saved);
+        // Não é possível restaurar File real, mas podemos restaurar o nome e tipo
+        setSelectedFiles(
+          arr.map((item: any) => {
+            if (typeof window !== 'undefined' && typeof window.File !== 'undefined') {
+              return { file: new window.File([""], item.fileName || item.file?.name || "arquivo.pdf", { type: "application/pdf" }), tipo: item.tipo };
+            } else {
+              // SSR fallback: objeto vazio
+              return { file: { name: item.fileName || "arquivo.pdf" } as File, tipo: item.tipo };
+            }
+          })
+        );
+      } catch {}
+    }
+  }, []);
+
+  useEffect(() => {
+    // Salvar sempre que mudar
+    localStorage.setItem(
+      "upload_selected_files",
+      JSON.stringify(selectedFiles.map(f => ({ fileName: f.file.name, tipo: f.tipo })))
+    );
+  }, [selectedFiles]);
+
   // Adiciona arquivos à lista local
   const handleFileChange = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const validFiles: File[] = [];
+    const validFiles: { file: File, tipo: "proposta" | "apolice" | "endosso" | "cancelado" }[] = [];
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       if (file.type !== "application/pdf") {
@@ -128,7 +157,7 @@ export default function UploadPage() {
         });
         continue;
       }
-      validFiles.push(file);
+      validFiles.push({ file, tipo: "proposta" });
     }
     if (validFiles.length > 0) {
       setSelectedFiles((prev) => [...prev, ...validFiles]);
@@ -137,7 +166,7 @@ export default function UploadPage() {
 
   // Remover arquivo da lista local
   const handleRemoveFile = (name: string) => {
-    setSelectedFiles((prev) => prev.filter((f) => f.name !== name));
+    setSelectedFiles((prev) => prev.filter((f) => f.file.name !== name));
   };
 
   // Limpar lista local
@@ -147,21 +176,29 @@ export default function UploadPage() {
 
   // Enviar arquivos para a fila global
   const handleSend = () => {
-    if (selectedFiles.length === 0) return;
-    addFiles(selectedFiles, tipoDocumento);
-    setHasSent(true);
+    // Só envia arquivos que ainda não estão na fila global
+    const nomesNaFila = queue.map(f => f.name);
+    const arquivosParaEnviar = selectedFiles.filter(f => !nomesNaFila.includes(f.file.name));
+    if (arquivosParaEnviar.length === 0) return;
+    // Agrupar arquivos por tipo para chamada correta do contexto
+    const tiposUnicos = Array.from(new Set(arquivosParaEnviar.map(f => f.tipo)));
+    tiposUnicos.forEach(tipo => {
+      const arquivosDoTipo = arquivosParaEnviar.filter(f => f.tipo === tipo).map(f => f.file);
+      addFiles(arquivosDoTipo, tipo);
+    });
     toast.success({
       title: "Arquivos enviados para processamento",
-      description: `${selectedFiles.length} arquivo(s) enviados para a fila!`,
+      description: `${arquivosParaEnviar.length} arquivo(s) enviados para a fila!`,
     });
   };
 
-  // Sincronizar status dos arquivos enviados com a fila global
+  // Função para obter o status do arquivo na fila global
   const getFileStatus = (name: string) => {
     const item = queue.find((f) => f.name === name);
     return item ? item.status : 'aguardando';
   };
 
+  // Função para obter o id do arquivo na fila global
   const getFileId = (name: string) => {
     const item = queue.find((f) => f.name === name);
     return item ? item.id : undefined;
@@ -193,10 +230,10 @@ export default function UploadPage() {
     setCheckCount(0)
 
     const formData = new FormData()
-    selectedFiles.forEach((file) => {
-      formData.append("data", file)
+    selectedFiles.forEach((f) => {
+      formData.append("data", f.file)
     })
-    formData.append("tipo_documento", tipoDocumento)
+    formData.append("tipo_documento", selectedFiles[0].tipo)
 
     try {
       // Simular progresso de upload
@@ -260,7 +297,7 @@ export default function UploadPage() {
 
   // Renderização da lista de arquivos
   const arquivosParaExibir = hasSent
-    ? queue.filter(f => selectedFiles.some(sf => sf.name === f.name))
+    ? queue.filter(f => selectedFiles.some(sf => sf.file.name === f.name))
     : selectedFiles;
 
   return (
@@ -281,44 +318,27 @@ export default function UploadPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="tipo-documento">Tipo de Documento</Label>
-                        <Select
-                          value={tipoDocumento}
-                          onValueChange={(value: "proposta" | "apolice" | "endosso") => setTipoDocumento(value)}
-                        >
-                          <SelectTrigger id="tipo-documento">
-                            <SelectValue placeholder="Selecione o tipo de documento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="proposta">Proposta</SelectItem>
-                            <SelectItem value="apolice">Apólice</SelectItem>
-                            <SelectItem value="endosso">Endosso</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <motion.div
-                        layout
-                        className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
-                          isDragging
-                            ? "border-primary bg-primary/5"
-                            : selectedFiles.length > 0
-                              ? "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/20"
+                      {/* Drag-and-drop area só aparece se não houver arquivos selecionados */}
+                      {selectedFiles.length === 0 && (
+                        <motion.div
+                          layout
+                          className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
+                            isDragging
+                              ? "border-primary bg-primary/5"
                               : "border-gray-300 hover:border-primary hover:bg-gray-50 dark:border-gray-700 dark:hover:border-primary dark:hover:bg-gray-800/50"
-                        }`}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{
-                          duration: 0.4,
-                          ease: [0.4, 0, 0.2, 1]
-                        }}
-                      >
-                        <div className="flex flex-col items-center justify-center text-center">
-                          <AnimatePresence mode="wait">
-                            {selectedFiles.length === 0 && (
+                          }`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{
+                            duration: 0.4,
+                            ease: [0.4, 0, 0.2, 1]
+                          }}
+                        >
+                          <div className="flex flex-col items-center justify-center text-center">
+                            <AnimatePresence mode="wait">
                               <motion.div
                                 key="upload-prompt"
                                 initial={{ opacity: 0, scale: 0.95 }}
@@ -348,79 +368,75 @@ export default function UploadPage() {
                                   className="hidden"
                                 />
                               </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </motion.div>
-
-                      {selectedFiles.length > 0 && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95, height: 0 }}
-                          animate={{ opacity: 1, scale: 1, height: "auto" }}
-                          exit={{ opacity: 0, scale: 0.95, height: 0 }}
-                          transition={{
-                            duration: 0.4,
-                            ease: [0.4, 0, 0.2, 1]
-                          }}
-                          className="space-y-2"
-                        >
-                          <div className="flex justify-between text-sm">
-                            <span>Progresso do upload</span>
-                            <span>{uploadProgress}%</span>
+                            </AnimatePresence>
                           </div>
-                          <Progress value={uploadProgress} className="h-2" />
-                          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                            {uploadStatus === "uploading" && "Enviando arquivo..."}
-                            {uploadStatus === "checking" && `Verificando registro... (${checkCount}/24)`}
-                            {uploadStatus === "success" && "Upload concluído com sucesso!"}
-                            {uploadStatus === "error" && "Erro no upload. Tente novamente."}
-                          </p>
                         </motion.div>
                       )}
 
-                      {arquivosParaExibir.length > 0 && (
-                        <div className="space-y-2 mb-4">
-                          {arquivosParaExibir.map((file) => {
-                            const name = file.name;
-                            const status = hasSent ? getFileStatus(name) : 'aguardando';
-                            const id = hasSent ? getFileId(name) : undefined;
-                            return (
-                              <div key={name} className={`flex items-center justify-between rounded px-2 py-1 text-xs transition group ${
-                                status === 'concluido'
-                                  ? 'bg-green-950/40'
-                                  : status === 'erro'
-                                  ? 'bg-red-950/30'
-                                  : status === 'enviando' || status === 'processando'
-                                  ? 'bg-blue-950/30'
-                                  : 'bg-neutral-800'
-                              }`}>
-                                <div className="flex items-center gap-2 min-w-0">
-                                  {statusIcon[status]}
-                                  <span className="truncate max-w-[120px]" title={name}>{name}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className={statusColor[status] + ' font-medium'}>{statusLabel[status]}</span>
-                                  <button
-                                    onClick={() => {
-                                      if (hasSent && id) removeFile(id);
-                                      else handleRemoveFile(name);
+                      {/* Lista de arquivos anexados, igual à tela de cotação */}
+                      {selectedFiles.length > 0 && (
+                        <div className="mb-2">
+                          <div className="grid grid-cols-[1fr_120px_32px_32px] gap-2 text-xs">
+                            {selectedFiles.map((item, idx) => {
+                              const status = getFileStatus(item.file.name);
+                              const id = getFileId(item.file.name);
+                              const tipoLabel: Record<string, string> = {
+                                proposta: "Proposta",
+                                apolice: "Apólice",
+                                endosso: "Endosso",
+                                cancelado: "Cancelamento",
+                              };
+                              const statusIcon = statusIconMap[status];
+                              return (
+                                <React.Fragment key={item.file.name}>
+                                  <span className="flex items-center font-medium overflow-x-auto whitespace-nowrap min-h-[32px] px-1">
+                                    {item.file.name}
+                                  </span>
+                                  <Select
+                                    value={item.tipo}
+                                    onValueChange={(value) => {
+                                      setSelectedFiles((prev) =>
+                                        prev.map((f, i) =>
+                                          i === idx ? { ...f, tipo: value as "proposta" | "apolice" | "endosso" | "cancelado" } : f
+                                        )
+                                      );
                                     }}
-                                    className="ml-1 text-neutral-500 hover:text-red-400 transition"
-                                    title="Remover ou cancelar envio"
-                                    disabled={status === 'enviando' || status === 'processando'}
+                                    disabled={status !== 'aguardando'}
                                   >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                    <SelectTrigger className="w-full h-7 text-xs">
+                                      <SelectValue>{tipoLabel[item.tipo]}</SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="proposta">Proposta</SelectItem>
+                                      <SelectItem value="apolice">Apólice</SelectItem>
+                                      <SelectItem value="endosso">Endosso</SelectItem>
+                                      <SelectItem value="cancelado">Cancelamento</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <span className="flex items-center justify-center">{statusIcon}</span>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      if (id && status !== 'aguardando') removeFile(id);
+                                      else handleRemoveFile(item.file.name);
+                                    }}
+                                    title="Remover arquivo"
+                                    disabled={status === 'enviando' || status === 'processando'}
+                                    className="w-7 h-7"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </Button>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
 
-                      {arquivosParaExibir.length > 0 && (
+                      {selectedFiles.length > 0 && (
                         <div className="flex gap-2 mt-2">
-                          <Button variant="outline" onClick={handleClear} disabled={arquivosParaExibir.length === 0}>
+                          <Button variant="outline" onClick={handleClear} disabled={selectedFiles.length === 0}>
                             Limpar lista
                           </Button>
                           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>

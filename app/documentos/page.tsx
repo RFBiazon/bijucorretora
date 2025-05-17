@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { UploadIcon as FileUpload, FilePlus, FileCheck, Clock, AlertCircle, Search, Trash2, Eye, Link2 } from "lucide-react"
+import { UploadIcon as FileUpload, FilePlus, FileCheck, Clock, AlertCircle, Search, Trash2, Eye, Link2, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -19,6 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import PageTransition from "@/components/PageTransition"
 import { normalizarProposta } from "@/lib/utils/normalize"
@@ -30,7 +31,7 @@ type DocumentoProcessado = {
   status: string
   criado_em?: string
   created_at?: string
-  tipo_documento: "proposta" | "apolice" | "endosso"
+  tipo_documento: "proposta" | "apolice" | "endosso" | "cancelado"
   proposta: {
     numero?: string
     cia_seguradora?: string
@@ -85,6 +86,8 @@ export default function PropostasPage() {
   const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
   const [tab, setTab] = useState("todas")
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isTabLoading, setIsTabLoading] = useState(false)
+  const [tabToShow, setTabToShow] = useState(tab)
 
   const fetchPropostas = async () => {
     try {
@@ -193,6 +196,17 @@ export default function PropostasPage() {
     setPropostasFiltradas(filtradas)
   }, [searchTerm, propostas])
 
+  useEffect(() => {
+    if (tab !== tabToShow) {
+      setIsTabLoading(true)
+      const timeout = setTimeout(() => {
+        setTabToShow(tab)
+        setIsTabLoading(false)
+      }, 400) // 400ms de loading
+      return () => clearTimeout(timeout)
+    }
+  }, [tab])
+
   if (propostaAtualizada) {
     setPropostas((prev) =>
       prev.map((p) => (p.id === propostaAtualizada.id ? propostaAtualizada : p))
@@ -262,6 +276,9 @@ export default function PropostasPage() {
     } else if (tipo === "endosso") {
       color = "bg-yellow-500 text-black";
       label = "Endosso";
+    } else if (tipo === "cancelado") {
+      color = "bg-red-600";
+      label = "Cancelado";
     }
     return <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${color}`}>{label}</span>;
   };
@@ -280,6 +297,7 @@ export default function PropostasPage() {
     if (tab === "apolices") return p.tipo_documento === "apolice";
     if (tab === "propostas") return p.tipo_documento === "proposta";
     if (tab === "endossos") return p.tipo_documento === "endosso";
+    if (tab === "cancelados") return p.tipo_documento === "cancelado";
     return true;
   });
 
@@ -329,7 +347,7 @@ export default function PropostasPage() {
             </span>
             <span className="text-xs text-muted-foreground font-mono">ID: {proposta.id.substring(0, 8)}</span>
           </div>
-          <Button size="icon" variant="destructive" onClick={() => handleDelete(proposta.id)} disabled={deletingId === proposta.id} title="Excluir">
+          <Button size="icon" variant="destructive" onClick={() => setPropostaParaExcluir(proposta.id)} disabled={deletingId === proposta.id} title="Excluir">
             <Trash2 className="w-4 h-4" />
           </Button>
         </CardFooter>
@@ -338,7 +356,6 @@ export default function PropostasPage() {
   };
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Tem certeza que deseja excluir este documento?")) return;
     setDeletingId(id);
     await supabase.from("ocr_processamento").delete().eq("id", id);
     setPropostas((prev) => prev.filter((doc) => doc.id !== id));
@@ -393,6 +410,7 @@ export default function PropostasPage() {
                 <TabsTrigger value="propostas">Propostas</TabsTrigger>
                 <TabsTrigger value="apolices">Apólices</TabsTrigger>
                 <TabsTrigger value="endossos">Endossos</TabsTrigger>
+                <TabsTrigger value="cancelados">Cancelados</TabsTrigger>
               </TabsList>
             </Tabs>
           </motion.div>
@@ -425,26 +443,62 @@ export default function PropostasPage() {
                   </div>
                 ) : (
                   <AnimatePresence mode="wait">
-                    <motion.div
-                      key={tab}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      transition={{ duration: 0.3 }}
-                      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                    >
-                      {propostasFiltradasPorTab.map((proposta, idx) => (
-                        <motion.div
-                          key={proposta.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 20 }}
-                          transition={{ duration: 0.3, delay: idx * 0.05 }}
-                        >
-                          {renderPropostaCard(proposta as DocumentoProcessado)}
-                        </motion.div>
-                      ))}
-                    </motion.div>
+                    {isTabLoading ? (
+                      <motion.div
+                        key={tab + "-loading"}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex items-center justify-center min-h-[200px]"
+                      >
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      </motion.div>
+                    ) : propostasFiltradas.filter((p) => {
+                        if (tabToShow === "apolices") return p.tipo_documento === "apolice";
+                        if (tabToShow === "propostas") return p.tipo_documento === "proposta";
+                        if (tabToShow === "endossos") return p.tipo_documento === "endosso";
+                        if (tabToShow === "cancelados") return p.tipo_documento === "cancelado";
+                        return true;
+                      }).length > 0 ? (
+                      <motion.div
+                        key={tabToShow}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                      >
+                        {propostasFiltradas.filter((p) => {
+                          if (tabToShow === "apolices") return p.tipo_documento === "apolice";
+                          if (tabToShow === "propostas") return p.tipo_documento === "proposta";
+                          if (tabToShow === "endossos") return p.tipo_documento === "endosso";
+                          if (tabToShow === "cancelados") return p.tipo_documento === "cancelado";
+                          return true;
+                        }).map((proposta, idx) => (
+                          <motion.div
+                            key={proposta.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            transition={{ duration: 0.3, delay: idx * 0.05 }}
+                          >
+                            {renderPropostaCard(proposta as DocumentoProcessado)}
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key={tabToShow + "-empty"}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex items-center justify-center min-h-[200px] text-muted-foreground"
+                      >
+                        Nenhum documento encontrado para esta aba.
+                      </motion.div>
+                    )}
                   </AnimatePresence>
                 )}
               </TabsContent>

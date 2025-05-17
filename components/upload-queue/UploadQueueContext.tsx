@@ -13,12 +13,12 @@ export interface UploadFile {
   status: UploadStatus;
   error?: string;
   _toastShown: boolean;
-  tipoDocumento: "proposta" | "apolice" | "endosso";
+  tipoDocumento: "proposta" | "apolice" | "endosso" | "cancelado";
 }
 
 interface UploadQueueContextProps {
   queue: UploadFile[];
-  addFiles: (files: File[], tipoDocumento: "proposta" | "apolice" | "endosso") => void;
+  addFiles: (files: File[], tipoDocumento: "proposta" | "apolice" | "endosso" | "cancelado") => void;
   removeFile: (id: string) => void;
   updateFileStatus: (id: string, status: UploadStatus, error?: string) => void;
   clearQueue: () => void;
@@ -30,7 +30,7 @@ const UPLOAD_QUEUE_KEY = 'uploadQueue';
 
 const WEBHOOK_URL = process.env.NEXT_PUBLIC_WEBHOOK_PROPOSTA_URL || "";
 
-async function uploadFileAndNotifyN8n(file: File, updateFileStatus: (id: string, status: UploadStatus, error?: string) => void, fileId: string, tipoDocumento: "proposta" | "apolice" | "endosso"): Promise<void> {
+async function uploadFileAndNotifyN8n(file: File, updateFileStatus: (id: string, status: UploadStatus, error?: string) => void, fileId: string, tipoDocumento: "proposta" | "apolice" | "endosso" | "cancelado"): Promise<void> {
   // 1. Enviar PDF para o webhook do N8n
   const formData = new FormData();
   formData.append("data", file);
@@ -63,14 +63,33 @@ async function uploadFileAndNotifyN8n(file: File, updateFileStatus: (id: string,
     console.count(`[Fila de Propostas] Tentativas para o ID: ${propostaId}`);
     const { data: registros, error } = await supabase
       .from("ocr_processamento")
-      .select("id, status")
+      .select("id, status, numero_proposta")
       .eq("id", propostaId);
     if (error && error.code !== 'PGRST116') {
       throw new Error("Erro ao consultar Supabase: " + error.message);
     }
     if (registros && Array.isArray(registros) && registros.length > 0) {
-      console.log(`[Fila de Propostas] Registro encontrado no Supabase para o ID:`, propostaId);
-      return; // Encontrou o registro, sucesso!
+      const registro = registros[0];
+      console.log('ID do webhook:', propostaId, '| ID no Supabase:', registro.id, '| Status:', registro.status, '| Numero proposta:', registro.numero_proposta);
+      if (registro.status === "concluido") {
+        console.log(`[Fila de Propostas] Registro concluído no Supabase para o ID:`, propostaId);
+        return; // Sucesso!
+      }
+      // Se não estiver concluído, continua tentando
+    } else {
+      // Fallback: buscar pelo numero_proposta usando o nome do arquivo (sem extensão)
+      const nomeArquivo = file.name.replace(/\.[^/.]+$/, "");
+      const { data: registrosPorNumero, error: errorNumero } = await supabase
+        .from("ocr_processamento")
+        .select("id, status, numero_proposta")
+        .eq("numero_proposta", nomeArquivo);
+      if (!errorNumero && registrosPorNumero && registrosPorNumero.length > 0) {
+        const registro = registrosPorNumero[0];
+        console.log('FALLBACK: Encontrado por numero_proposta:', nomeArquivo, '| ID:', registro.id, '| Status:', registro.status);
+        if (registro.status === "concluido") {
+          return;
+        }
+      }
     }
     await new Promise((res) => setTimeout(res, 5000)); // Espera 5s
     tentativas++;
@@ -136,7 +155,7 @@ export const UploadQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [queue, toast]);
 
-  const addFiles = useCallback((files: File[], tipoDocumento: "proposta" | "apolice" | "endosso") => {
+  const addFiles = useCallback((files: File[], tipoDocumento: "proposta" | "apolice" | "endosso" | "cancelado") => {
     setQueue((prev) => [
       ...prev,
       ...files.map((file) => ({
