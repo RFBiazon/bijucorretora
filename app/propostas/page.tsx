@@ -30,7 +30,7 @@ type DocumentoProcessado = {
   status: string
   criado_em?: string
   created_at?: string
-  tipo_documento: "proposta" | "apolice" | "endosso"
+  tipo_documento: "proposta" | "apolice" | "endosso" | "cancelado"
   proposta: {
     numero?: string
     cia_seguradora?: string
