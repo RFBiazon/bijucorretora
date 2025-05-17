@@ -369,9 +369,16 @@ export default function PropostasPage() {
                 {getNumeroDocumento(proposta)}
               </CardTitle>
             </div>
-            <Link href={`/documentos/${proposta.id}`} className="inline-block p-0 m-0" title="Ver detalhes do documento">
-              {tipoBadge(proposta.tipo_documento)}
-            </Link>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href={`/documentos/${proposta.id}`} className="inline-block p-0 m-0">
+                    {tipoBadge(proposta.tipo_documento)}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Ver detalhes do documento</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <CardDescription className="truncate max-w-full">
             {formatarNomeSeguradora(proposta.proposta.cia_seguradora || "")}
@@ -402,9 +409,22 @@ export default function PropostasPage() {
             </span>
             <span className="text-xs text-muted-foreground font-mono">ID: {proposta.id.substring(0, 8)}</span>
           </div>
-          <Button size="icon" variant="destructive" onClick={() => setPropostaParaExcluir(proposta.id)} disabled={deletingId === proposta.id} title="Excluir">
-            <Trash2 className="w-4 h-4" />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                  onClick={() => setPropostaParaExcluir(proposta.id)}
+                  disabled={deletingId === proposta.id}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Excluir</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </CardFooter>
       </Card>
     );

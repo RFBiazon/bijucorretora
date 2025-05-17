@@ -362,7 +362,7 @@ export default function RelatoriosPage() {
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
                 <CardTitle>Total de Propostas</CardTitle>
-                <CardDescription>Número total de propostas processadas</CardDescription>
+                <CardDescription>Número total de propostas cadastradas</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{propostas.length}</div>
@@ -371,7 +371,7 @@ export default function RelatoriosPage() {
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
                 <CardTitle>Total de Apólices</CardTitle>
-                <CardDescription>Número total de apólices processadas</CardDescription>
+                <CardDescription>Número total de apólices cadastradas</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{propostas.filter(p => (p.tipo_documento || (p.resultado && p.resultado.tipo_documento)) === 'apolice').length}</div>
@@ -380,7 +380,7 @@ export default function RelatoriosPage() {
             <Card className="bg-black dark:bg-black border border-gray-800">
               <CardHeader>
                 <CardTitle>Prêmio Total</CardTitle>
-                <CardDescription>Soma total dos prêmios das propostas</CardDescription>
+                <CardDescription>Soma dos prêmios das propostas e apólices</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">

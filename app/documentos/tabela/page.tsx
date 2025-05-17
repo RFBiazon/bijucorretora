@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { normalizarProposta } from "@/lib/utils/normalize";
 import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { Trash2, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -25,11 +25,11 @@ import { DayPickerRangeProps, DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { useDayPicker } from 'react-day-picker';
-import { Popover as Tooltip, PopoverTrigger as TooltipTrigger, PopoverContent as TooltipContent } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 const COLS = [
-  { key: "tipo_documento", label: "Tipo" },
-  { key: "numero", label: "Documento nº" },
+  { key: "tipo_documento", label: "Documento" },
+  { key: "numero", label: "Número" },
   { key: "segurado", label: "Segurado" },
   { key: "cpf", label: "CPF/CNPJ" },
   { key: "placa", label: "Placa" },
@@ -381,190 +381,225 @@ export default function TabelaDocumentosPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="overflow-x-auto rounded-lg border border-gray-800"
           >
-            <table className="min-w-full text-sm">
-              <thead className="bg-neutral-900">
-                <tr>
-                  {COLS.map((col) => (
-                    <th key={col.key} className="px-4 py-2 text-left select-none relative group">
-                      <Popover open={openFilter === col.key} onOpenChange={open => setOpenFilter(open ? col.key : null)}>
-                        <PopoverTrigger asChild>
-                          <span className="cursor-pointer pr-5 font-medium" onClick={() => setOpenFilter(openFilter === col.key ? null : col.key)}>
-                            {col.label}
-                          </span>
-                        </PopoverTrigger>
-                        <PopoverContent align="center" className="w-auto min-w-[340px] p-0">
-                          {col.key === "vigencia_fim" ? (
-                            <>
-                              <Calendar
-                                mode="range"
-                                selected={vigenciaRange}
-                                onSelect={setVigenciaRange}
-                                numberOfMonths={2}
-                                locale={ptBR}
+            <TooltipProvider>
+              <table className="min-w-full text-sm">
+                <thead className="bg-neutral-900">
+                  <tr>
+                    {COLS.map((col) => (
+                      <th key={col.key} className="px-4 py-2 text-left select-none relative group">
+                        <Popover open={openFilter === col.key} onOpenChange={open => setOpenFilter(open ? col.key : null)}>
+                          <PopoverTrigger asChild>
+                            <span className="cursor-pointer pr-5 font-medium" onClick={() => setOpenFilter(openFilter === col.key ? null : col.key)}>
+                              {col.label}
+                            </span>
+                          </PopoverTrigger>
+                          <PopoverContent align="center" className="w-auto min-w-[340px] p-0">
+                            {col.key === "vigencia_fim" ? (
+                              <>
+                                <Calendar
+                                  mode="range"
+                                  selected={vigenciaRange}
+                                  onSelect={setVigenciaRange}
+                                  numberOfMonths={2}
+                                  locale={ptBR}
+                                />
+                                <div className="flex justify-end p-2">
+                                  <Button size="sm" variant="ghost" onClick={() => setVigenciaRange(undefined)}>
+                                    Limpar datas
+                                  </Button>
+                                </div>
+                              </>
+                            ) : col.key === "tipo_documento" ? (
+                              <select
+                                className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
+                                value={filters.tipo_documento}
+                                onChange={e => setFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                              >
+                                <option value="">Todos</option>
+                                <option value="proposta">Proposta</option>
+                                <option value="apolice">Apólice</option>
+                                <option value="endosso">Endosso</option>
+                                <option value="cancelado">Cancelado</option>
+                              </select>
+                            ) : (
+                              <input
+                                className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
+                                value={filters[col.key as keyof typeof filters]}
+                                onChange={e => setFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                                placeholder="Buscar..."
                               />
-                              <div className="flex justify-end p-2">
-                                <Button size="sm" variant="ghost" onClick={() => setVigenciaRange(undefined)}>
-                                  Limpar datas
-                                </Button>
-                              </div>
-                            </>
-                          ) : col.key === "tipo_documento" ? (
-                            <select
-                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
-                              value={filters.tipo_documento}
-                              onChange={e => setFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                            >
-                              <option value="">Todos</option>
-                              <option value="proposta">Proposta</option>
-                              <option value="apolice">Apólice</option>
-                              <option value="endosso">Endosso</option>
-                              <option value="cancelado">Cancelado</option>
-                            </select>
-                          ) : (
-                            <input
-                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
-                              value={filters[col.key as keyof typeof filters]}
-                              onChange={e => setFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                              placeholder="Buscar..."
-                            />
-                          )}
-                        </PopoverContent>
-                      </Popover>
-                      <span
-                        className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer transition-colors ${sort.key === col.key ? 'text-primary' : 'text-gray-500'} group-hover:text-primary`}
-                        onClick={e => { e.stopPropagation(); handleSort(col.key); }}
-                      >
-                        {sort.key === col.key ? (
-                          sort.asc ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />
-                        ) : <ChevronUp className="inline w-4 h-4 opacity-40" />}
-                      </span>
-                    </th>
-                  ))}
-                  <th className="px-4 py-2 text-left">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                <AnimatePresence>
-                  {isLoading ? (
-                    <motion.tr
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <td colSpan={9} className="text-center py-8">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          <span>Carregando...</span>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ) : sorted.length === 0 ? (
-                    <motion.tr
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <td colSpan={9} className="text-center py-8">Nenhum documento encontrado.</td>
-                    </motion.tr>
-                  ) : (
-                    paginatedRows.map((doc, index) => (
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                        <span
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer transition-colors ${sort.key === col.key ? 'text-primary' : 'text-gray-500'} group-hover:text-primary`}
+                          onClick={e => { e.stopPropagation(); handleSort(col.key); }}
+                        >
+                          {sort.key === col.key ? (
+                            sort.asc ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />
+                          ) : <ChevronUp className="inline w-4 h-4 opacity-40" />}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-left">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <AnimatePresence>
+                    {isLoading ? (
                       <motion.tr
-                        key={doc.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className="border-t border-gray-800 hover:bg-neutral-800 transition"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
                       >
-                        {COLS.map((col) => (
-                          <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${col.key === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
-                            {(() => {
-                              let value = '';
-                              if (col.key === "tipo_documento") {
-                                value = doc.tipo_documento.charAt(0).toUpperCase() + doc.tipo_documento.slice(1);
-                              } else if (col.key === "numero") {
-                                let numero = doc.tipo_documento === "apolice"
-                                  ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
-                                  : doc.tipo_documento === "endosso"
-                                    ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
-                                    : doc.proposta.numero || doc.id.substring(0, 8);
-                                const seguradora = (doc.proposta.cia_seguradora || '').toLowerCase();
-                                if (seguradora.includes('hdi')) {
-                                  if (numero && numero.includes('.')) {
-                                    numero = numero.split('.').pop();
-                                  }
-                                } else if (seguradora.includes('allianz') && doc.tipo_documento === 'apolice') {
-                                  if (numero && numero.length > 7) {
-                                    numero = numero.slice(-7);
-                                  }
-                                }
-                                value = numero;
-                              } else if (col.key === "segurado") {
-                                value = doc.segurado.nome;
-                              } else if (col.key === "cpf") {
-                                value = doc.segurado.cpf;
-                              } else if (col.key === "placa") {
-                                value = doc.veiculo.placa;
-                              } else if (col.key === "veiculo") {
-                                const modelo = doc.veiculo.marca_modelo;
-                                const ano_modelo = doc.veiculo.ano_modelo && doc.veiculo.ano_modelo !== 'Não informado' ? doc.veiculo.ano_modelo : '';
-                                const ano_fabricacao = doc.veiculo.ano_fabricacao && doc.veiculo.ano_fabricacao !== 'Não informado' ? doc.veiculo.ano_fabricacao : '';
-                                let veiculoStr = modelo;
-                                if (ano_fabricacao || ano_modelo) {
-                                  veiculoStr += ` - ${ano_fabricacao}${ano_modelo ? `/${ano_modelo}` : ''}`;
-                                }
-                                value = veiculoStr;
-                              } else if (col.key === "cia_seguradora") {
-                                value = formatarNomeSeguradora(doc.proposta.cia_seguradora);
-                              } else if (col.key === "vigencia_fim") {
-                                value = parseDataVigencia(doc.proposta.vigencia_fim);
-                              }
-                              // Limites customizados
-                              if (col.key === "segurado") {
-                                return <span className="block" title={value}>{value}</span>;
-                              }
-                              let maxLen = 22;
-                              if (col.key === "veiculo") maxLen = 18;
-                              if (col.key === "cpf") maxLen = 18;
-                              if (col.key === "placa") maxLen = 7;
-                              const isLong = typeof value === 'string' && value.length > maxLen;
-                              if (col.key === "vigencia_fim") {
-                                return <span className="whitespace-nowrap">{value}</span>;
-                              }
-                              if (!isLong) {
-                                return <span className="truncate block" title={value}>{value}</span>;
-                              }
-                              return (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="truncate block hover:underline text-blue-400" tabIndex={0}>{value.slice(0, maxLen)}...</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-xs break-words text-xs bg-neutral-900 border border-gray-700">
-                                    {value}
-                                  </TooltipContent>
-                                </Tooltip>
-                              );
-                            })()}
-                          </td>
-                        ))}
-                        <td className="px-4 py-2">
-                          <div className="flex gap-2">
-                            <Link href={`/documentos/${doc.id}`}>
-                              <Button size="sm" variant="outline" className="px-2 py-1 text-xs">Ver</Button>
-                            </Link>
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id} title="Excluir" className="px-2 py-1">
-                              <Trash2 className="w-2 h-2" />
-                            </Button>
+                        <td colSpan={9} className="text-center py-8">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Carregando...</span>
                           </div>
                         </td>
                       </motion.tr>
-                    ))
-                  )}
-                </AnimatePresence>
-              </tbody>
-            </table>
+                    ) : sorted.length === 0 ? (
+                      <motion.tr
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <td colSpan={9} className="text-center py-8">Nenhum documento encontrado.</td>
+                      </motion.tr>
+                    ) : (
+                      paginatedRows.map((doc, index) => (
+                        <motion.tr
+                          key={doc.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -20 }}
+                          transition={{ duration: 0.3, delay: index * 0.05 }}
+                          className="border-t border-gray-800 hover:bg-neutral-800 transition"
+                        >
+                          {COLS.map((col) => (
+                            <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${col.key === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
+                              {(() => {
+                                let value = '';
+                                if (col.key === "tipo_documento") {
+                                  const tipo = doc.tipo_documento;
+                                  let color = "bg-blue-600 text-white";
+                                  if (tipo === "apolice") color = "bg-green-600 text-white";
+                                  else if (tipo === "endosso") color = "bg-yellow-500 text-black";
+                                  else if (tipo === "cancelado") color = "bg-red-600 text-white";
+                                  const label = tipo.charAt(0).toUpperCase() + tipo.slice(1);
+                                  return (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${color}`}>
+                                      {label}
+                                    </span>
+                                  );
+                                } else if (col.key === "numero") {
+                                  let numero = doc.tipo_documento === "apolice"
+                                    ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
+                                    : doc.tipo_documento === "endosso"
+                                      ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
+                                      : doc.proposta.numero || doc.id.substring(0, 8);
+                                  const seguradora = (doc.proposta.cia_seguradora || '').toLowerCase();
+                                  if (seguradora.includes('hdi')) {
+                                    if (numero && numero.includes('.')) {
+                                      numero = numero.split('.').pop();
+                                    }
+                                  } else if (seguradora.includes('allianz') && doc.tipo_documento === 'apolice') {
+                                    if (numero && numero.length > 7) {
+                                      numero = numero.slice(-7);
+                                    }
+                                  }
+                                  value = numero;
+                                } else if (col.key === "segurado") {
+                                  value = doc.segurado.nome;
+                                } else if (col.key === "cpf") {
+                                  value = doc.segurado.cpf;
+                                } else if (col.key === "placa") {
+                                  value = doc.veiculo.placa;
+                                } else if (col.key === "veiculo") {
+                                  const modelo = doc.veiculo.marca_modelo;
+                                  const ano_modelo = doc.veiculo.ano_modelo && doc.veiculo.ano_modelo !== 'Não informado' ? doc.veiculo.ano_modelo : '';
+                                  const ano_fabricacao = doc.veiculo.ano_fabricacao && doc.veiculo.ano_fabricacao !== 'Não informado' ? doc.veiculo.ano_fabricacao : '';
+                                  let veiculoStr = modelo;
+                                  if (ano_fabricacao || ano_modelo) {
+                                    veiculoStr += ` - ${ano_fabricacao}${ano_modelo ? `/${ano_modelo}` : ''}`;
+                                  }
+                                  value = veiculoStr;
+                                } else if (col.key === "cia_seguradora") {
+                                  value = formatarNomeSeguradora(doc.proposta.cia_seguradora);
+                                } else if (col.key === "vigencia_fim") {
+                                  value = parseDataVigencia(doc.proposta.vigencia_fim);
+                                }
+                                if (col.key === "segurado") {
+                                  return <span className="block whitespace-normal break-words max-w-[420px]">{value}</span>;
+                                }
+                                if (col.key === "veiculo") {
+                                  let maxLen = 18;
+                                  const isLong = typeof value === 'string' && value.length > maxLen;
+                                  if (!isLong) {
+                                    return <span className="truncate block">{value}</span>;
+                                  }
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="truncate block hover:underline text-blue-400" tabIndex={0}>{value.slice(0, maxLen)}...</span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-sm break-words whitespace-pre-line text-xs bg-neutral-900 border border-gray-700">
+                                        {value}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                }
+                                return <span className="truncate block">{value}</span>;
+                              })()}
+                            </td>
+                          ))}
+                          <td className="px-4 py-2">
+                            <div className="flex gap-2">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-primary hover:bg-primary/10"
+                                      asChild
+                                    >
+                                      <Link href={`/documentos/${doc.id}`}>
+                                        <Eye className="h-4 w-4" />
+                                      </Link>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Visualizar documento</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                      onClick={() => handleDelete(doc.id)}
+                                      disabled={deletingId === doc.id}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Excluir documento</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      ))
+                    )}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </TooltipProvider>
             {/* Paginação */}
             {!showAllRows && totalPages > 1 && (
               <Pagination className="mt-6">
