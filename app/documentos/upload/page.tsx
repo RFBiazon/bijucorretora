@@ -262,6 +262,7 @@ export default function UploadPage() {
 
       const data = await response.json()
 
+      
       // O ID da proposta vem do retorno do webhook
       const id = data.id
       setPropostaId(id)

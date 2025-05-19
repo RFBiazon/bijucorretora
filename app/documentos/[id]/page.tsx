@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
+  MoreVertical,
 } from "lucide-react"
 import { cloneDeep } from "lodash"
 import PageTransition from "@/components/PageTransition"
@@ -30,6 +31,7 @@ import { AnimatePresence } from "framer-motion"
 import MotionDiv from "@/components/MotionDiv"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 
 type SectionKey = keyof DadosProposta
 type NestedField = keyof DadosProposta[SectionKey]
@@ -319,50 +321,107 @@ export default function PropostaDetalhesPage() {
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="outline" onClick={() => router.push("/documentos")}>
+            <div className="flex gap-2 w-full items-center">
+              {/* Botão Voltar sempre visível */}
+              <Button variant="outline" onClick={() => router.push("/documentos")}> 
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar
               </Button>
-              <Button onClick={() => setIsEditing(true)}>Editar dados</Button>
-              {(proposta as any)?.tipo_documento === "proposta" && (
-                <Button 
-                  variant="default" 
-                  onClick={handleConverterEmApolice}
-                  className="!bg-green-600 !text-white !border-none"
-                >
-                  Converter em Apólice
-                </Button>
-              )}
-              {(proposta as any)?.tipo_documento === "apolice" && (
-                <Button 
-                  variant="default" 
-                  onClick={handleConverterEmProposta}
-                  className="!bg-blue-600 !text-white !border-none"
-                >
-                  Converter em Proposta
-                </Button>
-              )}
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="default" className="!bg-red-600 !text-white !border-none">Cancelar Documento</Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Cancelar Documento</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Tem certeza que deseja cancelar este documento? Esta ação não pode ser desfeita.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Voltar</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleCancelarDocumento} className="!bg-red-600 !text-white !border-none">
-                      Confirmar Cancelamento
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </>
+              {/* Desktop: mostra botões restantes */}
+              <div className="hidden sm:flex gap-2">
+                <Button onClick={() => setIsEditing(true)}>Editar dados</Button>
+                {(proposta as any)?.tipo_documento === "proposta" && (
+                  <Button 
+                    variant="default" 
+                    onClick={handleConverterEmApolice}
+                    className="!bg-green-600 !text-white !border-none"
+                  >
+                    Converter em Apólice
+                  </Button>
+                )}
+                {(proposta as any)?.tipo_documento === "apolice" && (
+                  <Button 
+                    variant="default" 
+                    onClick={handleConverterEmProposta}
+                    className="!bg-blue-600 !text-white !border-none"
+                  >
+                    Converter em Proposta
+                  </Button>
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="default" className="!bg-red-600 !text-white !border-none">Cancelar Documento</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancelar Documento</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tem certeza que deseja cancelar este documento? Esta ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleCancelarDocumento} className="!bg-red-600 !text-white !border-none">
+                        Confirmar Cancelamento
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+              {/* Mobile: mostra menu (exceto Voltar) */}
+              <div className="flex sm:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <MoreVertical />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                      Editar dados
+                    </DropdownMenuItem>
+                    {(proposta as any)?.tipo_documento === "proposta" && (
+                      <DropdownMenuItem onClick={handleConverterEmApolice}>
+                        Converter em Apólice
+                      </DropdownMenuItem>
+                    )}
+                    {(proposta as any)?.tipo_documento === "apolice" && (
+                      <DropdownMenuItem onClick={handleConverterEmProposta}>
+                        Converter em Proposta
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={() => {
+                        document.getElementById("alert-cancelar-doc")?.click()
+                      }}
+                      className="!text-red-600"
+                    >
+                      Cancelar Documento
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {/* Botão oculto para disparar o AlertDialog pelo id */}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button id="alert-cancelar-doc" style={{ display: "none" }} />
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancelar Documento</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tem certeza que deseja cancelar este documento? Esta ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Voltar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleCancelarDocumento} className="!bg-red-600 !text-white !border-none">
+                        Confirmar Cancelamento
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
           )}
             </MotionDiv>
       </div>

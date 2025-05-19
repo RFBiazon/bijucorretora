@@ -9,6 +9,7 @@ import { Trash2, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { toast } from "sonner";
 import {
   Pagination,
   PaginationContent,
@@ -26,6 +27,7 @@ import { ptBR } from "date-fns/locale";
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { useDayPicker } from 'react-day-picker';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 
 const COLS = [
   { key: "tipo_documento", label: "Documento" },
@@ -42,6 +44,9 @@ const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
+
+// Definir colunas do modal sem CPF/CNPJ, tipando explicitamente
+const COLS_MODAL: { key: string; label: string }[] = COLS.filter((col: { key: string; label: string }) => col.key !== "cpf");
 
 function CustomCaption({ displayMonth, calendarMonth, setCalendarMonth }: any) {
   const [mode, setMode] = useState<'normal' | 'selectYear' | 'selectMonth'>('normal');
@@ -130,6 +135,12 @@ function CustomCaption({ displayMonth, calendarMonth, setCalendarMonth }: any) {
   );
 }
 
+// Adicionar função resetModalFiltersToDefault logo após a definição de getTodayISO
+function getTodayISO() {
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
+}
+
 export default function TabelaDocumentosPage() {
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -154,10 +165,78 @@ export default function TabelaDocumentosPage() {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [vigenciaRange, setVigenciaRange] = useState<DateRange | undefined>(undefined);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [showModal, setShowModal] = useState(false);
+  const [dadosRelacionados, setDadosRelacionados] = useState<any[]>([]);
+  const [isLoadingRelacionados, setIsLoadingRelacionados] = useState(false);
+
+  // Estados para filtros, ordenação e vigência do modal do sistema antigo
+  const [modalFilters, setModalFilters] = useState({
+    tipo_documento: "",
+    numero: "",
+    segurado: "",
+    placa: "",
+    veiculo: "",
+    cia_seguradora: "",
+    vigencia_fim: "",
+    vigencia_fim_range: "",
+  });
+  const [modalSort, setModalSort] = useState<{ key: string; asc: boolean }>({ key: "", asc: true });
+  const [modalVigenciaRange, setModalVigenciaRange] = useState<DateRange | undefined>(undefined);
+  const [modalShowAllRows, setModalShowAllRows] = useState(false);
+  const modalRowsPerPage = 25;
+  const [modalCurrentPage, setModalCurrentPage] = useState(1);
+  const [modalOpenFilter, setModalOpenFilter] = useState<string | null>(null);
+  const [modalInputFilters, setModalInputFilters] = useState(modalFilters);
+  const [isFilteringModal, setIsFilteringModal] = useState(false);
+  const [isApplyingModalFilter, setIsApplyingModalFilter] = useState(false);
+
+  // Função resetModalFiltersToDefault dentro do componente
+  function resetModalFiltersToDefault() {
+    const today = getTodayISO();
+    setModalFilters({
+      tipo_documento: "",
+      numero: "",
+      segurado: "",
+      placa: "",
+      veiculo: "",
+      cia_seguradora: "",
+      vigencia_fim: "",
+      vigencia_fim_range: `${today} - 2100-12-31`,
+    });
+    setModalInputFilters({
+      tipo_documento: "",
+      numero: "",
+      segurado: "",
+      placa: "",
+      veiculo: "",
+      cia_seguradora: "",
+      vigencia_fim: "",
+      vigencia_fim_range: `${today} - 2100-12-31`,
+    });
+    setModalVigenciaRange({ from: new Date(today), to: new Date('2100-12-31') });
+  }
+
+  // Debounce para aplicar filtros do modal
+  useEffect(() => {
+    setIsFilteringModal(true);
+    const handler = setTimeout(() => {
+      setModalFilters(modalInputFilters);
+      setIsFilteringModal(false);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [modalInputFilters]);
+
+  // Quando modalFilters mudar, mostrar loader por 300ms simulando aplicação do filtro
+  useEffect(() => {
+    if (isFilteringModal) return; // não mostrar loader durante debounce
+    setIsApplyingModalFilter(true);
+    const t = setTimeout(() => setIsApplyingModalFilter(false), 300);
+    return () => clearTimeout(t);
+  }, [modalFilters]);
 
   // Nova função para buscar documentos com filtro
   async function fetchDocumentos(filtros: Partial<typeof filters> = {}) {
-    setIsLoading(true);
+      setIsLoading(true);
     let query = supabase.from("ocr_processamento").select("*").order("criado_em", { ascending: false });
     // Desestruturar com valor padrão vazio
     const {
@@ -181,11 +260,11 @@ export default function TabelaDocumentosPage() {
       query = query.limit(100);
     }
     const { data, error } = await query;
-    if (!error && data) {
-      setDocumentos(data.map((d: any) => normalizarProposta(d)));
+      if (!error && data) {
+        setDocumentos(data.map((d: any) => normalizarProposta(d)));
+      }
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }
 
   // Atualizar busca ao digitar
   useEffect(() => {
@@ -336,6 +415,189 @@ export default function TabelaDocumentosPage() {
     }
   });
 
+  // Função para buscar dados relacionados
+  async function buscarDadosRelacionados() {
+    setIsLoadingRelacionados(true);
+    try {
+      const { data, error } = await supabase
+        .from("db_biju")
+        .select(`
+          id,
+          proposta,
+          apolice,
+          segurado,
+          tipo,
+          seguradora,
+          vigencia_final,
+          veiculo,
+          placa,
+          ramo,
+          corretor,
+          premio_liquido,
+          premio_bruto,
+          forma_pagto,
+          quantidade_parcelas
+        `)
+        .order("id", { ascending: false });
+
+      if (error) {
+        console.error("Erro ao buscar dados:", error);
+        throw error;
+      }
+      
+      console.log("Dados brutos da tabela db_biju:", data);
+      
+      if (!data || data.length === 0) {
+        console.log("Nenhum dado encontrado na tabela db_biju");
+        setDadosRelacionados([]);
+        return;
+      }
+
+      // Mapear os dados da tabela db_biju para o formato esperado
+      const dadosNormalizados = data.map((doc: any) => {
+        // Determinar o tipo do documento
+        let tipoDocumento = "proposta";
+        if (doc.tipo) {
+          tipoDocumento = doc.tipo.toLowerCase();
+        } else if (doc.apolice) {
+          tipoDocumento = "apolice";
+        }
+
+        // Formatar o nome da seguradora
+        let seguradoraFormatada = doc.seguradora || "";
+        if (seguradoraFormatada.toLowerCase().includes("tokio marine")) {
+          seguradoraFormatada = "Tokio Marine";
+        } else if (seguradoraFormatada.toLowerCase().includes("hdi")) {
+          seguradoraFormatada = "HDI";
+        }
+
+        // Formatar o número do documento
+        let numeroDocumento = doc.proposta || "";
+        if (tipoDocumento === "apolice") {
+          numeroDocumento = doc.apolice || doc.proposta || "";
+        }
+
+        const documentoNormalizado = {
+          id: doc.id || "",
+          tipo_documento: tipoDocumento,
+          proposta: {
+            numero: numeroDocumento,
+            apolice: doc.apolice || "",
+            cia_seguradora: seguradoraFormatada,
+            vigencia_fim: doc.vigencia_final || "",
+            ramo: doc.ramo || "",
+            corretor: doc.corretor || "",
+            premio_liquido: doc.premio_liquido || "",
+            premio_bruto: doc.premio_bruto || "",
+            forma_pagto: doc.forma_pagto || "",
+            quantidade_parcelas: doc.quantidade_parcelas || 0
+          },
+          segurado: {
+            nome: doc.segurado || "",
+            cpf: "" // Não temos CPF na tabela db_biju
+          },
+          veiculo: {
+            marca_modelo: doc.veiculo || "",
+            placa: doc.placa || ""
+          }
+        };
+
+        console.log("Documento normalizado:", documentoNormalizado);
+        return documentoNormalizado;
+      });
+      
+      console.log("Dados normalizados finais:", dadosNormalizados);
+      setDadosRelacionados(dadosNormalizados);
+    } catch (error) {
+      console.error("Erro ao buscar dados relacionados:", error);
+      toast.error("Erro ao carregar dados relacionados");
+    } finally {
+      setIsLoadingRelacionados(false);
+    }
+  }
+
+  // Função para filtrar e ordenar os dados do sistema antigo
+  const filteredModalRows = dadosRelacionados.filter((doc) => {
+    const vigenciaFim = parseDataVigenciaToDate(doc.proposta.vigencia_fim);
+    const [filterInicio, filterFim] = modalFilters.vigencia_fim_range.split(" - ").map(d => parseDataVigenciaToDate(d));
+    const vigenciaFimDay = vigenciaFim ? new Date(vigenciaFim.setHours(0,0,0,0)) : null;
+    const filterInicioDay = filterInicio ? new Date(filterInicio.setHours(0,0,0,0)) : null;
+    const filterFimDay = filterFim ? new Date(filterFim.setHours(0,0,0,0)) : null;
+
+    return (
+      (!modalFilters.tipo_documento || doc.tipo_documento.toLowerCase().includes(modalFilters.tipo_documento.toLowerCase())) &&
+      (!modalFilters.numero || (doc.tipo_documento === "apolice"
+        ? (doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)).toLowerCase().includes(modalFilters.numero.toLowerCase())
+        : doc.tipo_documento === "endosso"
+          ? (doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)).toLowerCase().includes(modalFilters.numero.toLowerCase())
+          : (doc.proposta.numero || doc.id.substring(0, 8)).toLowerCase().includes(modalFilters.numero.toLowerCase())
+      )) &&
+      (!modalFilters.segurado || doc.segurado.nome.toLowerCase().includes(modalFilters.segurado.toLowerCase())) &&
+      (!modalFilters.placa || doc.veiculo.placa.toLowerCase().includes(modalFilters.placa.toLowerCase())) &&
+      (!modalFilters.veiculo || doc.veiculo.marca_modelo.toLowerCase().includes(modalFilters.veiculo.toLowerCase())) &&
+      (!modalFilters.cia_seguradora || doc.proposta.cia_seguradora.toLowerCase().includes(modalFilters.cia_seguradora.toLowerCase())) &&
+      (!modalFilters.vigencia_fim || parseDataVigencia(doc.proposta.vigencia_fim).includes(modalFilters.vigencia_fim)) &&
+      (
+        !modalFilters.vigencia_fim_range ||
+        (vigenciaFimDay && filterInicioDay && filterFimDay && vigenciaFimDay >= filterInicioDay && vigenciaFimDay <= filterFimDay)
+      )
+    );
+  });
+
+  const sortedModalRows = [...filteredModalRows].sort((a, b) => {
+    const { key, asc } = modalSort;
+    if (!key) return 0;
+    let aValue = "";
+    let bValue = "";
+    if (key === "tipo_documento") {
+      aValue = a.tipo_documento;
+      bValue = b.tipo_documento;
+    } else if (key === "numero") {
+      aValue = a.tipo_documento === "apolice" ? (a.proposta.apolice || a.proposta.numero || a.id) : a.tipo_documento === "endosso" ? (a.proposta.endosso || a.proposta.numero || a.id) : (a.proposta.numero || a.id);
+      bValue = b.tipo_documento === "apolice" ? (b.proposta.apolice || b.proposta.numero || b.id) : b.tipo_documento === "endosso" ? (b.proposta.endosso || b.proposta.numero || b.id) : (b.proposta.numero || b.id);
+    } else if (key === "segurado") {
+      aValue = a.segurado.nome;
+      bValue = b.segurado.nome;
+    } else if (key === "placa") {
+      aValue = a.veiculo.placa;
+      bValue = b.veiculo.placa;
+    } else if (key === "veiculo") {
+      aValue = a.veiculo.marca_modelo;
+      bValue = b.veiculo.marca_modelo;
+    } else if (key === "cia_seguradora") {
+      aValue = a.proposta.cia_seguradora;
+      bValue = b.proposta.cia_seguradora;
+    } else if (key === "vigencia_fim") {
+      const dateA = parseDataVigenciaToDate(a.proposta.vigencia_fim);
+      const dateB = parseDataVigenciaToDate(b.proposta.vigencia_fim);
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return asc ? 1 : -1;
+      if (!dateB) return asc ? -1 : 1;
+      return asc ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
+    }
+    return asc ? String(aValue).localeCompare(String(bValue)) : String(bValue).localeCompare(String(aValue));
+  });
+
+  const modalTotalPages = Math.ceil(sortedModalRows.length / modalRowsPerPage);
+  const modalPaginatedRows = modalShowAllRows ? sortedModalRows : sortedModalRows.slice((modalCurrentPage - 1) * modalRowsPerPage, modalCurrentPage * modalRowsPerPage);
+
+  // Atualize o filtro de vigência ao selecionar intervalo no modal
+  useEffect(() => {
+    const from = modalVigenciaRange?.from;
+    const to = modalVigenciaRange?.to;
+    if (from instanceof Date && to instanceof Date) {
+      setModalFilters(f => ({
+        ...f,
+        vigencia_fim_range: `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`
+      }));
+    }
+  }, [modalVigenciaRange]);
+
+  // Corrigir paginação do modal para resetar ao filtrar
+  useEffect(() => {
+    setModalCurrentPage(1);
+  }, [modalFilters, modalSort]);
+
   return (
     <ProtectedRoute>
       <PageTransition>
@@ -347,6 +609,224 @@ export default function TabelaDocumentosPage() {
           >
             <h1 className="text-2xl font-bold mb-6">Tabela de Documentos</h1>
             <div className="mb-4 flex justify-end gap-2">
+              <Dialog open={showModal} onOpenChange={(open) => {
+                setShowModal(open);
+                if (open) {
+                  resetModalFiltersToDefault();
+                  buscarDadosRelacionados();
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowModal(true);
+                    }}
+                  >
+                    Histórico de Vigências
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-7xl max-h-[80vh] overflow-y-auto">
+                  <TooltipProvider>
+                    <DialogHeader>
+                      <DialogTitle>Dados do Sistema Antigo</DialogTitle>
+                      <DialogDescription>
+                        Visualização dos dados do sistema antigo para comparação
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4">
+                      <div className="flex justify-end gap-2 mb-2">
+                        <Button size="sm" variant="default" className="bg-blue-600 text-white hover:bg-blue-700" onClick={resetModalFiltersToDefault}>
+                          Limpar Filtros
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setModalShowAllRows(v => !v)}>
+                          {modalShowAllRows ? "Mostrar paginado" : `Expandir tudo (${sortedModalRows.length})`}
+                        </Button>
+                      </div>
+                      {(isLoadingRelacionados || isApplyingModalFilter) ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                          <span className="ml-2">Carregando...</span>
+                        </div>
+                      ) : dadosRelacionados.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          Nenhum dado encontrado no sistema antigo
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-neutral-900">
+                              <tr>
+                                {COLS_MODAL.map((col: { key: string; label: string }) => (
+                                  <th key={col.key} className="px-4 py-2 text-left select-none relative group">
+                                    <Popover open={modalOpenFilter === col.key} onOpenChange={open => setModalOpenFilter(open ? col.key : null)}>
+                                      <PopoverTrigger asChild>
+                                        <span className="cursor-pointer pr-5 font-medium" onClick={() => setModalOpenFilter(modalOpenFilter === col.key ? null : col.key)}>
+                                          {col.label}
+                                        </span>
+                                      </PopoverTrigger>
+                                      <PopoverContent align="center" className="w-auto p-0">
+                                        {col.key === "vigencia_fim" ? (
+                                          <>
+                                            <Calendar
+                                              mode="range"
+                                              selected={modalVigenciaRange}
+                                              onSelect={setModalVigenciaRange}
+                                              numberOfMonths={2}
+                                              locale={ptBR}
+                                            />
+                                            <div className="flex justify-end p-2">
+                                              <Button size="sm" variant="ghost" onClick={() => setModalVigenciaRange(undefined)}>
+                                                Limpar datas
+                                              </Button>
+                                            </div>
+                                          </>
+                                        ) : col.key === "tipo_documento" ? (
+                                          <select
+                                            className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
+                                            style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
+                                            value={modalFilters.tipo_documento}
+                                            onChange={e => setModalInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                                          >
+                                            <option value="">Todos</option>
+                                            <option value="proposta">Proposta</option>
+                                            <option value="apolice">Apólice</option>
+                                            <option value="endosso">Endosso</option>
+                                            <option value="cancelado">Cancelado</option>
+                                            <option value="renovação">Renovação</option>
+                                            <option value="novo">Novo</option>
+                                          </select>
+                                        ) : (
+                                          <input
+                                            className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
+                                            style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
+                                            value={modalInputFilters[col.key as keyof typeof modalInputFilters] || ""}
+                                            onChange={e => setModalInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                                            placeholder="Buscar..."
+                                          />
+                                        )}
+                                      </PopoverContent>
+                                    </Popover>
+                                    <span
+                                      className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer transition-colors ${modalSort.key === col.key ? 'text-primary' : 'text-gray-500'} group-hover:text-primary`}
+                                      onClick={e => { e.stopPropagation(); setModalSort(prev => ({ key: col.key, asc: prev.key === col.key ? !prev.asc : true })); }}
+                                    >
+                                      {modalSort.key === col.key ? (
+                                        modalSort.asc ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />
+                                      ) : <ChevronUp className="inline w-4 h-4 opacity-40" />}
+                                    </span>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <AnimatePresence>
+                                {modalPaginatedRows.map((doc, index) => (
+                                  <motion.tr
+                                    key={doc.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.3, delay: index * 0.05 }}
+                                    className="border-t border-gray-800 hover:bg-neutral-800 transition"
+                                  >
+                                    {COLS_MODAL.map((col: { key: string; label: string }) => (
+                                      <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${(col.key as string) === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
+                                        {(() => {
+                                          let value = '';
+                                          if (col.key === "tipo_documento") {
+                                            const tipo = doc.tipo_documento;
+                                            let color = "bg-blue-600 text-white";
+                                            if (tipo === "apolice") color = "bg-green-600 text-white";
+                                            else if (tipo === "endosso") color = "bg-yellow-500 text-black";
+                                            else if (tipo === "cancelado") color = "bg-red-600 text-white";
+                                            const label = tipo.charAt(0).toUpperCase() + tipo.slice(1);
+                                            return (
+                                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${color}`}>
+                                                {label}
+                                              </span>
+                                            );
+                                          } else if (col.key === "numero") {
+                                            value = doc.tipo_documento === "apolice"
+                                              ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
+                                              : doc.tipo_documento === "endosso"
+                                                ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
+                                                : doc.proposta.numero || doc.id.substring(0, 8);
+                                          } else if ((col.key as string) === 'segurado') {
+                                            value = doc.segurado.nome;
+                                          } else if (col.key === "placa") {
+                                            value = doc.veiculo.placa;
+                                          } else if (col.key === "veiculo") {
+                                            const modelo = doc.veiculo.marca_modelo;
+                                            const ano_modelo = doc.veiculo.ano_modelo && doc.veiculo.ano_modelo !== 'Não informado' ? doc.veiculo.ano_modelo : '';
+                                            const ano_fabricacao = doc.veiculo.ano_fabricacao && doc.veiculo.ano_fabricacao !== 'Não informado' ? doc.veiculo.ano_fabricacao : '';
+                                            let veiculoStr = modelo;
+                                            if (ano_fabricacao || ano_modelo) {
+                                              veiculoStr += ` - ${ano_fabricacao}${ano_modelo ? `/${ano_modelo}` : ''}`;
+                                            }
+                                            let maxLen = 18;
+                                            const isLong = typeof veiculoStr === 'string' && veiculoStr.length > maxLen;
+                                            if (!isLong) {
+                                              return <span className="truncate block">{veiculoStr}</span>;
+                                            }
+                                            return (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="truncate block hover:underline text-blue-400" tabIndex={0}>{veiculoStr.slice(0, maxLen)}...</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="max-w-sm break-words whitespace-pre-line text-xs bg-neutral-900 border border-gray-700">
+                                                  {veiculoStr}
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            );
+                                          } else if (col.key === "cia_seguradora") {
+                                            value = formatarNomeSeguradora(doc.proposta.cia_seguradora);
+                                          } else if (col.key === "vigencia_fim") {
+                                            value = parseDataVigencia(doc.proposta.vigencia_fim);
+                                          }
+                                          return <span className="truncate block">{value}</span>;
+                                        })()}
+                                      </td>
+                                    ))}
+                                  </motion.tr>
+                                ))}
+                              </AnimatePresence>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </TooltipProvider>
+                  {!modalShowAllRows && modalTotalPages > 1 && (
+                    <Pagination className="mt-6">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={e => {
+                              e.preventDefault();
+                              setModalCurrentPage(p => Math.max(1, p - 1));
+                            }}
+                            aria-disabled={modalCurrentPage === 1}
+                            tabIndex={modalCurrentPage === 1 ? -1 : 0}
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={e => {
+                              e.preventDefault();
+                              setModalCurrentPage(p => Math.min(modalTotalPages, p + 1));
+                            }}
+                            aria-disabled={modalCurrentPage === modalTotalPages}
+                            tabIndex={modalCurrentPage === modalTotalPages ? -1 : 0}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  )}
+                </DialogContent>
+              </Dialog>
               <button
                 className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm border border-blue-700 text-white transition-colors"
                 onClick={() => {
@@ -382,18 +862,18 @@ export default function TabelaDocumentosPage() {
             className="overflow-x-auto rounded-lg border border-gray-800"
           >
             <TooltipProvider>
-              <table className="min-w-full text-sm">
-                <thead className="bg-neutral-900">
-                  <tr>
-                    {COLS.map((col) => (
-                      <th key={col.key} className="px-4 py-2 text-left select-none relative group">
-                        <Popover open={openFilter === col.key} onOpenChange={open => setOpenFilter(open ? col.key : null)}>
-                          <PopoverTrigger asChild>
-                            <span className="cursor-pointer pr-5 font-medium" onClick={() => setOpenFilter(openFilter === col.key ? null : col.key)}>
-                              {col.label}
-                            </span>
-                          </PopoverTrigger>
-                          <PopoverContent align="center" className="w-auto min-w-[340px] p-0">
+            <table className="min-w-full text-sm">
+              <thead className="bg-neutral-900">
+                <tr>
+                  {COLS.map((col: { key: string; label: string }) => (
+                    <th key={col.key} className="px-4 py-2 text-left select-none relative group">
+                      <Popover open={openFilter === col.key} onOpenChange={open => setOpenFilter(open ? col.key : null)}>
+                        <PopoverTrigger asChild>
+                          <span className="cursor-pointer pr-5 font-medium" onClick={() => setOpenFilter(openFilter === col.key ? null : col.key)}>
+                            {col.label}
+                          </span>
+                        </PopoverTrigger>
+                          <PopoverContent align="center" className="w-auto p-0">
                             {col.key === "vigencia_fim" ? (
                               <>
                                 <Calendar
@@ -410,77 +890,79 @@ export default function TabelaDocumentosPage() {
                                 </div>
                               </>
                             ) : col.key === "tipo_documento" ? (
-                              <select
-                                className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
-                                value={filters.tipo_documento}
-                                onChange={e => setFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                              >
-                                <option value="">Todos</option>
-                                <option value="proposta">Proposta</option>
-                                <option value="apolice">Apólice</option>
-                                <option value="endosso">Endosso</option>
-                                <option value="cancelado">Cancelado</option>
-                              </select>
-                            ) : (
-                              <input
-                                className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-full"
-                                value={filters[col.key as keyof typeof filters]}
-                                onChange={e => setFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                                placeholder="Buscar..."
-                              />
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                        <span
-                          className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer transition-colors ${sort.key === col.key ? 'text-primary' : 'text-gray-500'} group-hover:text-primary`}
-                          onClick={e => { e.stopPropagation(); handleSort(col.key); }}
-                        >
-                          {sort.key === col.key ? (
-                            sort.asc ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />
-                          ) : <ChevronUp className="inline w-4 h-4 opacity-40" />}
-                        </span>
-                      </th>
-                    ))}
-                    <th className="px-4 py-2 text-left">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <AnimatePresence>
-                    {isLoading ? (
-                      <motion.tr
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.3 }}
+                            <select
+                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
+                              style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
+                              value={filters.tipo_documento}
+                              onChange={e => setFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                            >
+                              <option value="">Todos</option>
+                              <option value="proposta">Proposta</option>
+                              <option value="apolice">Apólice</option>
+                              <option value="endosso">Endosso</option>
+                              <option value="cancelado">Cancelado</option>
+                            </select>
+                          ) : (
+                            <input
+                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
+                              style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
+                              value={filters[col.key as keyof typeof filters]}
+                              onChange={e => setFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                              placeholder="Buscar..."
+                            />
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                      <span
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer transition-colors ${sort.key === col.key ? 'text-primary' : 'text-gray-500'} group-hover:text-primary`}
+                        onClick={e => { e.stopPropagation(); handleSort(col.key); }}
                       >
-                        <td colSpan={9} className="text-center py-8">
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                            <span>Carregando...</span>
-                          </div>
-                        </td>
-                      </motion.tr>
-                    ) : sorted.length === 0 ? (
+                        {sort.key === col.key ? (
+                          sort.asc ? <ChevronUp className="inline w-4 h-4" /> : <ChevronDown className="inline w-4 h-4" />
+                        ) : <ChevronUp className="inline w-4 h-4 opacity-40" />}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="px-4 py-2 text-left">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence>
+                  {isLoading ? (
+                    <motion.tr
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <td colSpan={9} className="text-center py-8">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Carregando...</span>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ) : sorted.length === 0 ? (
+                    <motion.tr
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <td colSpan={9} className="text-center py-8">Nenhum documento encontrado.</td>
+                    </motion.tr>
+                  ) : (
+                    paginatedRows.map((doc, index) => (
                       <motion.tr
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.3 }}
+                        key={doc.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3, delay: index * 0.05 }}
+                        className="border-t border-gray-800 hover:bg-neutral-800 transition"
                       >
-                        <td colSpan={9} className="text-center py-8">Nenhum documento encontrado.</td>
-                      </motion.tr>
-                    ) : (
-                      paginatedRows.map((doc, index) => (
-                        <motion.tr
-                          key={doc.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          transition={{ duration: 0.3, delay: index * 0.05 }}
-                          className="border-t border-gray-800 hover:bg-neutral-800 transition"
-                        >
-                          {COLS.map((col) => (
-                            <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${col.key === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
+                        {COLS.map((col: { key: string; label: string }) => (
+                            <td key={col.key} className={`px-4 py-2 text-xs truncate cursor-pointer${(col.key as string) === 'segurado' ? ' max-w-[420px]' : ' max-w-[160px]'}`}>
                               {(() => {
                                 let value = '';
                                 if (col.key === "tipo_documento") {
@@ -512,7 +994,7 @@ export default function TabelaDocumentosPage() {
                                     }
                                   }
                                   value = numero;
-                                } else if (col.key === "segurado") {
+                                } else if ((col.key as string) === 'segurado') {
                                   value = doc.segurado.nome;
                                 } else if (col.key === "cpf") {
                                   value = doc.segurado.cpf;
@@ -526,13 +1008,27 @@ export default function TabelaDocumentosPage() {
                                   if (ano_fabricacao || ano_modelo) {
                                     veiculoStr += ` - ${ano_fabricacao}${ano_modelo ? `/${ano_modelo}` : ''}`;
                                   }
-                                  value = veiculoStr;
+                                  let maxLen = 18;
+                                  const isLong = typeof veiculoStr === 'string' && veiculoStr.length > maxLen;
+                                  if (!isLong) {
+                                    return <span className="truncate block">{veiculoStr}</span>;
+                                  }
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="truncate block hover:underline text-blue-400" tabIndex={0}>{veiculoStr.slice(0, maxLen)}...</span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-sm break-words whitespace-pre-line text-xs bg-neutral-900 border border-gray-700">
+                                        {veiculoStr}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
                                 } else if (col.key === "cia_seguradora") {
                                   value = formatarNomeSeguradora(doc.proposta.cia_seguradora);
                                 } else if (col.key === "vigencia_fim") {
                                   value = parseDataVigencia(doc.proposta.vigencia_fim);
                                 }
-                                if (col.key === "segurado") {
+                                if ((col.key as string) === 'segurado') {
                                   return <span className="block whitespace-normal break-words max-w-[420px]">{value}</span>;
                                 }
                                 if (col.key === "veiculo") {
@@ -554,10 +1050,10 @@ export default function TabelaDocumentosPage() {
                                 }
                                 return <span className="truncate block">{value}</span>;
                               })()}
-                            </td>
-                          ))}
-                          <td className="px-4 py-2">
-                            <div className="flex gap-2">
+                          </td>
+                        ))}
+                        <td className="px-4 py-2">
+                          <div className="flex gap-2">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -567,9 +1063,9 @@ export default function TabelaDocumentosPage() {
                                       className="text-primary hover:bg-primary/10"
                                       asChild
                                     >
-                                      <Link href={`/documentos/${doc.id}`}>
+                            <Link href={`/documentos/${doc.id}`}>
                                         <Eye className="h-4 w-4" />
-                                      </Link>
+                            </Link>
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Visualizar documento</TooltipContent>
@@ -586,19 +1082,19 @@ export default function TabelaDocumentosPage() {
                                       disabled={deletingId === doc.id}
                                     >
                                       <Trash2 className="h-4 w-4" />
-                                    </Button>
+                            </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Excluir documento</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                            </div>
-                          </td>
-                        </motion.tr>
-                      ))
-                    )}
-                  </AnimatePresence>
-                </tbody>
-              </table>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))
+                  )}
+                </AnimatePresence>
+              </tbody>
+            </table>
             </TooltipProvider>
             {/* Paginação */}
             {!showAllRows && totalPages > 1 && (

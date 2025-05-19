@@ -166,10 +166,10 @@ export default function PropostasPage() {
 
   useEffect(() => {
     const buscar = async () => {
-      if (searchTerm.trim() === "") {
-        setPropostasFiltradas(propostas)
-        return
-      }
+    if (searchTerm.trim() === "") {
+      setPropostasFiltradas(propostas)
+      return
+    }
       setIsLoading(true)
       const term = searchTerm.trim()
       let resultados: any[] = []
@@ -373,8 +373,8 @@ export default function PropostasPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href={`/documentos/${proposta.id}`} className="inline-block p-0 m-0">
-                    {tipoBadge(proposta.tipo_documento)}
-                  </Link>
+              {tipoBadge(proposta.tipo_documento)}
+            </Link>
                 </TooltipTrigger>
                 <TooltipContent>Ver detalhes do documento</TooltipContent>
               </Tooltip>
@@ -420,7 +420,7 @@ export default function PropostasPage() {
                   disabled={deletingId === proposta.id}
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+          </Button>
               </TooltipTrigger>
               <TooltipContent>Excluir</TooltipContent>
             </Tooltip>
@@ -463,7 +463,7 @@ export default function PropostasPage() {
                 </Button>
                 <Button asChild variant="outline">
                   <Link href="/documentos/tabela">
-                    Tabela de Documentos
+                    Relatório de Vigências
                   </Link>
                 </Button>
               </div>
