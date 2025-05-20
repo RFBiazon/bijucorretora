@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import "./hover-effects.css"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -332,18 +333,22 @@ export default function PropostasPage() {
 
   const tipoBadge = (tipo: string) => {
     let color = "bg-blue-600";
+    let hoverColor = "hover:bg-blue-500";
     let label = "Proposta";
     if (tipo === "apolice") {
       color = "bg-green-600";
+      hoverColor = "hover:bg-green-500";
       label = "Apólice";
     } else if (tipo === "endosso") {
       color = "bg-yellow-500 text-black";
+      hoverColor = "hover:bg-yellow-400";
       label = "Endosso";
     } else if (tipo === "cancelado") {
       color = "bg-red-600";
+      hoverColor = "hover:bg-red-500";
       label = "Cancelado";
     }
-    return <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${color}`}>{label}</span>;
+    return <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${color} ${hoverColor} transition-colors duration-200 relative z-10`}>{label}</span>;
   };
 
   const getNumeroDocumento = (doc: DocumentoProcessado) => {
@@ -357,12 +362,28 @@ export default function PropostasPage() {
   };
 
   const renderPropostaCard = (proposta: DocumentoProcessado) => {
+    // Determina a classe de hover baseada no tipo de documento
+    const getTipoHoverClass = () => {
+      switch (proposta.tipo_documento) {
+        case "proposta":
+          return "proposta-hover";
+        case "apolice":
+          return "apolice-hover";
+        case "endosso":
+          return "endosso-hover";
+        case "cancelado":
+          return "cancelado-hover";
+        default:
+          return "proposta-hover"; // Padrão
+      }
+    };
+    
     return (
       <Card
         key={proposta.id}
-        className={"overflow-hidden transition-all duration-300 bg-black dark:bg-black border border-gray-800 min-h-[250px] max-h-[290px] h-full flex flex-col justify-between"}
+        className={`overflow-visible transition-all duration-300 bg-black dark:bg-black border border-gray-800 min-h-[250px] max-h-[290px] h-full flex flex-col justify-between group hover:-translate-y-1 hover:z-[5] card-hover-effect ${getTipoHoverClass()}`}
       >
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 relative z-10">
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg font-mono flex items-center">
@@ -384,7 +405,7 @@ export default function PropostasPage() {
             {formatarNomeSeguradora(proposta.proposta.cia_seguradora || "")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="pb-2">
+        <CardContent className="pb-2 relative z-10">
           <div className="flex flex-col gap-1">
             <p className="text-base font-semibold mt-2 mb-1 truncate max-w-full">{proposta.segurado.nome}</p>
             <p className="text-sm text-muted-foreground mb-1 truncate max-w-full">
@@ -400,7 +421,7 @@ export default function PropostasPage() {
             )}
           </div>
         </CardContent>
-        <CardFooter className="pt-2 flex justify-between items-center mt-auto">
+        <CardFooter className="pt-2 flex justify-between items-center mt-auto relative z-10">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground">
               Vigência: {parseDataVigencia(proposta.proposta.vigencia_fim)
@@ -536,7 +557,7 @@ export default function PropostasPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
                         transition={{ duration: 0.3 }}
-                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 cards-container"
                       >
                         {propostasFiltradas.map((proposta, idx) => (
                           <motion.div
@@ -545,6 +566,15 @@ export default function PropostasPage() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 20 }}
                             transition={{ duration: 0.3, delay: idx * 0.05 }}
+                            className="card-container relative z-[1]"
+                            onMouseMove={(e) => {
+                              const card = e.currentTarget;
+                              const rect = card.getBoundingClientRect();
+                              const x = e.clientX - rect.left;
+                              const y = e.clientY - rect.top;
+                              card.style.setProperty("--mouse-x", `${x}px`);
+                              card.style.setProperty("--mouse-y", `${y}px`);
+                            }}
                           >
                             {renderPropostaCard(proposta as DocumentoProcessado)}
                           </motion.div>

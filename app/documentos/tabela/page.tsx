@@ -144,6 +144,7 @@ function getTodayISO() {
 export default function TabelaDocumentosPage() {
   const [documentos, setDocumentos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [filters, setFilters] = useState({
     tipo_documento: "",
     numero: "",
@@ -156,6 +157,9 @@ export default function TabelaDocumentosPage() {
     vigencia_inicio: "",
     vigencia_fim_range: "",
   });
+  
+  // Separar inputs do usuário dos filtros reais que disparam a busca
+  const [inputFilters, setInputFilters] = useState(filters);
   const [searchTerm, setSearchTerm] = useState("");
   const [sort, setSort] = useState<{ key: string; asc: boolean }>({ key: "", asc: true });
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -216,15 +220,8 @@ export default function TabelaDocumentosPage() {
     setModalVigenciaRange({ from: new Date(today), to: new Date('2100-12-31') });
   }
 
-  // Debounce para aplicar filtros do modal
-  useEffect(() => {
-    setIsFilteringModal(true);
-    const handler = setTimeout(() => {
-      setModalFilters(modalInputFilters);
-      setIsFilteringModal(false);
-    }, 400);
-    return () => clearTimeout(handler);
-  }, [modalInputFilters]);
+  // Remover debounce automático do modal - filtros só serão aplicados com botão "Aplicar"
+  // Os filtros do modal não devem ser aplicados automaticamente
 
   // Quando modalFilters mudar, mostrar loader por 300ms simulando aplicação do filtro
   useEffect(() => {
@@ -266,7 +263,13 @@ export default function TabelaDocumentosPage() {
       setIsLoading(false);
     }
 
-  // Atualizar busca ao digitar
+  // Referência para o timeout do debounce
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+  
+  // Remover o debounce automático - a filtragem só ocorrerá quando o usuário clicar em "Aplicar"
+  // Não implementar debounce automático entre inputFilters e filters
+  
+  // Efeito separado para buscar documentos quando os filtros mudam
   useEffect(() => {
     fetchDocumentos(filters);
   }, [filters]);
@@ -400,9 +403,10 @@ export default function TabelaDocumentosPage() {
     const from = vigenciaRange?.from;
     const to = vigenciaRange?.to;
     if (from instanceof Date && to instanceof Date) {
-      setFilters(f => ({
+      const newRange = `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`;
+      setInputFilters(f => ({
         ...f,
-        vigencia_fim_range: `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`
+        vigencia_fim_range: newRange
       }));
     }
   }, [vigenciaRange]);
@@ -581,15 +585,16 @@ export default function TabelaDocumentosPage() {
   const modalTotalPages = Math.ceil(sortedModalRows.length / modalRowsPerPage);
   const modalPaginatedRows = modalShowAllRows ? sortedModalRows : sortedModalRows.slice((modalCurrentPage - 1) * modalRowsPerPage, modalCurrentPage * modalRowsPerPage);
 
-  // Atualize o filtro de vigência ao selecionar intervalo no modal
+  // Atualize apenas o inputFilter de vigência ao selecionar intervalo no modal
   useEffect(() => {
     const from = modalVigenciaRange?.from;
     const to = modalVigenciaRange?.to;
     if (from instanceof Date && to instanceof Date) {
-      setModalFilters(f => ({
+      setModalInputFilters(f => ({
         ...f,
         vigencia_fim_range: `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`
       }));
+      // Não aplicar automaticamente o filtro
     }
   }, [modalVigenciaRange]);
 
@@ -675,35 +680,137 @@ export default function TabelaDocumentosPage() {
                                               numberOfMonths={2}
                                               locale={ptBR}
                                             />
-                                            <div className="flex justify-end p-2">
-                                              <Button size="sm" variant="ghost" onClick={() => setModalVigenciaRange(undefined)}>
+                                            <div className="flex justify-between p-2">
+                                              <Button 
+                                                size="sm" 
+                                                className="bg-blue-600 text-white hover:bg-blue-700"
+                                                onClick={() => {
+                                                  const from = modalVigenciaRange?.from;
+                                                  const to = modalVigenciaRange?.to;
+                                                  if (from instanceof Date && to instanceof Date) {
+                                                    const newRange = `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`;
+                                                    const updatedFilters = {
+                                                      ...modalInputFilters,
+                                                      vigencia_fim_range: newRange
+                                                    };
+                                                    setIsFilteringModal(true);
+                                                    setModalFilters(updatedFilters);
+                                                    setModalInputFilters(updatedFilters);
+                                                    setTimeout(() => setIsFilteringModal(false), 300);
+                                                    
+                                                    setTimeout(() => {
+                                                      setModalOpenFilter(null);
+                                                    }, 500);
+                                                  }
+                                                }}
+                                                disabled={isFilteringModal}
+                                              >
+                                                {isFilteringModal ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                                    <span>Aguarde</span>
+                                                  </div>
+                                                ) : "Aplicar Filtro"}
+                                              </Button>
+                                              <Button 
+                                                size="sm" 
+                                                variant="ghost" 
+                                                onClick={() => {
+                                                  setModalVigenciaRange(undefined);
+                                                  const updatedFilters = {
+                                                    ...modalInputFilters,
+                                                    vigencia_fim_range: ""
+                                                  };
+                                                  setModalInputFilters(updatedFilters);
+                                                  setModalFilters(updatedFilters);
+                                                }}
+                                              >
                                                 Limpar datas
                                               </Button>
                                             </div>
                                           </>
                                         ) : col.key === "tipo_documento" ? (
-                                          <select
-                                            className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
-                                            style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
-                                            value={modalFilters.tipo_documento}
-                                            onChange={e => setModalInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                                          >
-                                            <option value="">Todos</option>
-                                            <option value="proposta">Proposta</option>
-                                            <option value="apolice">Apólice</option>
-                                            <option value="endosso">Endosso</option>
-                                            <option value="cancelado">Cancelado</option>
-                                            <option value="renovação">Renovação</option>
-                                            <option value="novo">Novo</option>
-                                          </select>
+                                          <div className="flex flex-col gap-3 p-3 min-w-[180px]">
+                                            <select
+                                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
+                                              value={modalInputFilters.tipo_documento}
+                                              onChange={e => setModalInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                                            >
+                                              <option value="">Todos</option>
+                                              <option value="proposta">Proposta</option>
+                                              <option value="apolice">Apólice</option>
+                                              <option value="endosso">Endosso</option>
+                                              <option value="cancelado">Cancelado</option>
+                                              <option value="renovação">Renovação</option>
+                                              <option value="novo">Novo</option>
+                                            </select>
+                                            <div className="flex justify-between items-center gap-2">
+                                              <button 
+                                                className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
+                                                onClick={() => {
+                                                  setIsFilteringModal(true);
+                                                  setModalFilters(modalInputFilters);
+                                                  setTimeout(() => setIsFilteringModal(false), 300);
+                                                }}
+                                                disabled={isFilteringModal}
+                                              >
+                                                {isFilteringModal ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                                    <span>Aguarde</span>
+                                                  </div>
+                                                ) : "Aplicar"}
+                                              </button>
+                                              <button 
+                                                className="text-xs px-2 py-1.5 rounded text-gray-400 hover:text-white hover:bg-neutral-700 flex-1"
+                                                onClick={() => {
+                                                  const resetValue = "";
+                                                  setModalInputFilters(f => ({ ...f, tipo_documento: resetValue }));
+                                                  setModalFilters(f => ({ ...f, tipo_documento: resetValue }));
+                                                }}
+                                              >
+                                                Limpar
+                                              </button>
+                                            </div>
+                                          </div>
                                         ) : (
-                                          <input
-                                            className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
-                                            style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
-                                            value={modalInputFilters[col.key as keyof typeof modalInputFilters] || ""}
-                                            onChange={e => setModalInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                                            placeholder="Buscar..."
-                                          />
+                                          <div className="flex flex-col gap-3 p-3 min-w-[180px]">
+                                            <input
+                                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
+                                              style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '100%'}}
+                                              value={modalInputFilters[col.key as keyof typeof modalInputFilters] || ""}
+                                              onChange={e => setModalInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                                              placeholder="Buscar..."
+                                            />
+                                            <div className="flex justify-between items-center gap-2">
+                                              <button 
+                                                className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
+                                                onClick={() => {
+                                                  setIsFilteringModal(true);
+                                                  setModalFilters(modalInputFilters);
+                                                  setTimeout(() => setIsFilteringModal(false), 300);
+                                                }}
+                                                disabled={isFilteringModal}
+                                              >
+                                                {isFilteringModal ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                                    <span>Aguarde</span>
+                                                  </div>
+                                                ) : "Aplicar"}
+                                              </button>
+                                              <button 
+                                                className="text-xs px-2 py-1.5 rounded text-gray-400 hover:text-white hover:bg-neutral-700 flex-1"
+                                                onClick={() => {
+                                                  const resetValue = "";
+                                                  setModalInputFilters(f => ({ ...f, [col.key]: resetValue }));
+                                                  setModalFilters(f => ({ ...f, [col.key]: resetValue }));
+                                                }}
+                                              >
+                                                Limpar
+                                              </button>
+                                            </div>
+                                          </div>
                                         )}
                                       </PopoverContent>
                                     </Popover>
@@ -830,7 +937,7 @@ export default function TabelaDocumentosPage() {
               <button
                 className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm border border-blue-700 text-white transition-colors"
                 onClick={() => {
-                  setFilters({
+                  const emptyFilters = {
                     tipo_documento: "",
                     numero: "",
                     segurado: "",
@@ -841,7 +948,9 @@ export default function TabelaDocumentosPage() {
                     vigencia_fim: "",
                     vigencia_inicio: "",
                     vigencia_fim_range: "",
-                  });
+                  };
+                  setInputFilters(emptyFilters);
+                  setFilters(emptyFilters);
                   setVigenciaRange(undefined);
                 }}
               >
@@ -883,33 +992,121 @@ export default function TabelaDocumentosPage() {
                                   numberOfMonths={2}
                                   locale={ptBR}
                                 />
-                                <div className="flex justify-end p-2">
-                                  <Button size="sm" variant="ghost" onClick={() => setVigenciaRange(undefined)}>
+                                <div className="flex justify-between p-2">
+                                  <Button 
+                                    size="sm" 
+                                    className="bg-blue-600 text-white hover:bg-blue-700"
+                                    onClick={() => {
+                                      const from = vigenciaRange?.from;
+                                      const to = vigenciaRange?.to;
+                                      if (from instanceof Date && to instanceof Date) {
+                                        const newRange = `${format(from, 'yyyy-MM-dd')} - ${format(to, 'yyyy-MM-dd')}`;
+                                        const updatedFilters = {
+                                          ...inputFilters,
+                                          vigencia_fim_range: newRange
+                                        };
+                                        setFilters(updatedFilters);
+                                        setInputFilters(updatedFilters);
+                                        
+                                        setTimeout(() => {
+                                          setOpenFilter(null);
+                                        }, 500);
+                                      }
+                                    }}
+                                  >
+                                    Aplicar Filtro
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    onClick={() => {
+                                      setVigenciaRange(undefined);
+                                      const updatedFilters = {
+                                        ...inputFilters,
+                                        vigencia_fim_range: ""
+                                      };
+                                      setInputFilters(updatedFilters);
+                                      setFilters(updatedFilters);
+                                    }}
+                                  >
                                     Limpar datas
                                   </Button>
                                 </div>
                               </>
                             ) : col.key === "tipo_documento" ? (
-                            <select
-                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
-                              style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
-                              value={filters.tipo_documento}
-                              onChange={e => setFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                            >
-                              <option value="">Todos</option>
-                              <option value="proposta">Proposta</option>
-                              <option value="apolice">Apólice</option>
-                              <option value="endosso">Endosso</option>
-                              <option value="cancelado">Cancelado</option>
-                            </select>
+                            <div className="flex flex-col gap-3 p-3 min-w-[180px]">
+                              <select
+                                className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
+                                value={inputFilters.tipo_documento}
+                                onChange={e => setInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                              >
+                                <option value="">Todos</option>
+                                <option value="proposta">Proposta</option>
+                                <option value="apolice">Apólice</option>
+                                <option value="endosso">Endosso</option>
+                                <option value="cancelado">Cancelado</option>
+                              </select>
+                              <div className="flex justify-between items-center gap-2">
+                                <button 
+                                  className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
+                                  onClick={() => setFilters(inputFilters)}
+                                  disabled={isFiltering}
+                                >
+                                  {isFiltering ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                      <span>Aguarde</span>
+                                    </div>
+                                  ) : "Aplicar"}
+                                </button>
+                                <button 
+                                  className="text-xs px-2 py-1.5 rounded text-gray-400 hover:text-white hover:bg-neutral-700 flex-1"
+                                  onClick={() => {
+                                    const resetValue = "";
+                                    setInputFilters(f => ({ ...f, tipo_documento: resetValue }));
+                                    setFilters(f => ({ ...f, tipo_documento: resetValue }));
+                                  }}
+                                >
+                                  Limpar
+                                </button>
+                              </div>
+                            </div>
                           ) : (
-                            <input
-                              className="bg-neutral-900 border border-gray-700 rounded px-2 py-1 text-xs w-20"
-                              style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '120px'}}
-                              value={filters[col.key as keyof typeof filters]}
-                              onChange={e => setFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                              placeholder="Buscar..."
-                            />
+                            <div className="flex flex-col gap-3 p-3 min-w-[180px]">
+                              <div className="relative">
+                                <input
+                                  className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
+                                  style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '100%'}}
+                                  value={inputFilters[col.key as keyof typeof inputFilters] || ""}
+                                  onChange={e => setInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                                  placeholder="Buscar..."
+                                />
+                              </div>
+                              <div className="flex justify-between items-center gap-2">
+                                <button 
+                                  className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
+                                  onClick={() => setFilters(inputFilters)}
+                                  disabled={isFiltering}
+                                >
+                                  {isFiltering ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                      <span>Aguarde</span>
+                                    </div>
+                                  ) : "Aplicar"}
+                                </button>
+                                <button 
+                                  className="text-xs px-2 py-1.5 rounded text-gray-400 hover:text-white hover:bg-neutral-700 flex-1"
+                                  onClick={() => {
+                                    const resetValue = "";
+                                    setInputFilters(f => ({ ...f, [col.key]: resetValue }));
+                                    setFilters(f => ({ ...f, [col.key]: resetValue }));
+                                  }}
+                                >
+                                  Limpar
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </PopoverContent>
                       </Popover>
