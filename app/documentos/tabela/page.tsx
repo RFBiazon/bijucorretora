@@ -164,7 +164,7 @@ export default function TabelaDocumentosPage() {
   const [sort, setSort] = useState<{ key: string; asc: boolean }>({ key: "", asc: true });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 15;
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [showAllRows, setShowAllRows] = useState(false);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [vigenciaRange, setVigenciaRange] = useState<DateRange | undefined>(undefined);
@@ -194,10 +194,32 @@ export default function TabelaDocumentosPage() {
   const [isFilteringModal, setIsFilteringModal] = useState(false);
   const [isApplyingModalFilter, setIsApplyingModalFilter] = useState(false);
 
-  // Função resetModalFiltersToDefault dentro do componente
+  // No componente principal - aplicar ordenação automática quando o filtro de vigência é aplicado
+  useEffect(() => {
+    // Se houver um filtro de vigência, ordenar automaticamente por data de vigência em ordem crescente
+    if (filters.vigencia_fim || filters.vigencia_fim_range) {
+      setSort({ key: "vigencia_fim", asc: true });
+    }
+  }, [filters.vigencia_fim, filters.vigencia_fim_range]);
+  
+  // No modal - aplicar ordenação automática quando o filtro de vigência é aplicado
+  useEffect(() => {
+    // Se houver um filtro de vigência, ordenar automaticamente por data de vigência em ordem crescente
+    if (modalFilters.vigencia_fim || modalFilters.vigencia_fim_range) {
+      setModalSort({ key: "vigencia_fim", asc: true });
+    }
+  }, [modalFilters.vigencia_fim, modalFilters.vigencia_fim_range]);
+
+  // Modificar a função resetModalFiltersToDefault para usar a data atual até 1 ano à frente
   function resetModalFiltersToDefault() {
     const today = getTodayISO();
-    setModalFilters({
+    
+    // Data 365 dias à frente (1 ano)
+    const oneYearFromNow = new Date();
+    oneYearFromNow.setDate(oneYearFromNow.getDate() + 365);
+    const oneYearFromNowISO = oneYearFromNow.toISOString().slice(0, 10);
+    
+    const defaultFilters = {
       tipo_documento: "",
       numero: "",
       segurado: "",
@@ -205,19 +227,18 @@ export default function TabelaDocumentosPage() {
       veiculo: "",
       cia_seguradora: "",
       vigencia_fim: "",
-      vigencia_fim_range: `${today} - 2100-12-31`,
+      vigencia_fim_range: `${today} - ${oneYearFromNowISO}`,
+    };
+    
+    setModalFilters(defaultFilters);
+    setModalInputFilters(defaultFilters);
+    setModalVigenciaRange({ 
+      from: new Date(today), 
+      to: new Date(oneYearFromNowISO) 
     });
-    setModalInputFilters({
-      tipo_documento: "",
-      numero: "",
-      segurado: "",
-      placa: "",
-      veiculo: "",
-      cia_seguradora: "",
-      vigencia_fim: "",
-      vigencia_fim_range: `${today} - 2100-12-31`,
-    });
-    setModalVigenciaRange({ from: new Date(today), to: new Date('2100-12-31') });
+    
+    // Também aplicar a ordenação por vigência
+    setModalSort({ key: "vigencia_fim", asc: true });
   }
 
   // Remover debounce automático do modal - filtros só serão aplicados com botão "Aplicar"
@@ -613,6 +634,7 @@ export default function TabelaDocumentosPage() {
             transition={{ duration: 0.5 }}
           >
             <h1 className="text-2xl font-bold mb-6">Tabela de Documentos</h1>
+            
             <div className="mb-4 flex justify-end gap-2">
               <Dialog open={showModal} onOpenChange={(open) => {
                 setShowModal(open);
@@ -641,13 +663,157 @@ export default function TabelaDocumentosPage() {
                     </DialogHeader>
                     <div className="mt-4">
                       <div className="flex justify-end gap-2 mb-2">
-                        <Button size="sm" variant="default" className="bg-blue-600 text-white hover:bg-blue-700" onClick={resetModalFiltersToDefault}>
-                          Limpar Filtros
-                        </Button>
                         <Button size="sm" variant="outline" onClick={() => setModalShowAllRows(v => !v)}>
                           {modalShowAllRows ? "Mostrar paginado" : `Expandir tudo (${sortedModalRows.length})`}
                         </Button>
                       </div>
+                      
+                      {/* Histórico de filtros aplicados no modal */}
+                      <div className="mb-4">
+                        {Object.entries(modalFilters).some(([key, value]) => value) && (
+                          <div className="flex flex-wrap gap-2 items-center mb-3">
+                            <span className="text-sm text-gray-400">Filtros aplicados:</span>
+                            
+                            {modalFilters.tipo_documento && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Documento: {modalFilters.tipo_documento.charAt(0).toUpperCase() + modalFilters.tipo_documento.slice(1)}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, tipo_documento: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.numero && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Número: {modalFilters.numero}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, numero: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.segurado && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Segurado: {modalFilters.segurado}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, segurado: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.placa && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Placa: {modalFilters.placa}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, placa: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.veiculo && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Veículo: {modalFilters.veiculo}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, veiculo: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.cia_seguradora && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Seguradora: {modalFilters.cia_seguradora}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, cia_seguradora: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.vigencia_fim && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Vigência: {modalFilters.vigencia_fim}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, vigencia_fim: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {modalFilters.vigencia_fim_range && (
+                              <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                                Período vigência: {modalFilters.vigencia_fim_range.replace(/-/g, '/').replace(' - ', ' até ')}
+                                <button 
+                                  className="ml-1 hover:text-white" 
+                                  onClick={() => {
+                                    const updatedFilters = {...modalFilters, vigencia_fim_range: ""};
+                                    setModalFilters(updatedFilters);
+                                    setModalInputFilters(updatedFilters);
+                                    setModalVigenciaRange(undefined);
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            )}
+                            
+                            {/* Botão para limpar todos os filtros */}
+                            <button
+                              className="px-2 py-1 rounded-full bg-red-900/30 text-red-100 text-xs flex items-center gap-1 border border-red-900 hover:bg-red-800/30"
+                              onClick={() => resetModalFiltersToDefault()}
+                            >
+                              <Trash2 size={14} /> Limpar todos
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
                       {(isLoadingRelacionados || isApplyingModalFilter) ? (
                         <div className="flex items-center justify-center py-8">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
@@ -696,8 +862,11 @@ export default function TabelaDocumentosPage() {
                                                     setIsFilteringModal(true);
                                                     setModalFilters(updatedFilters);
                                                     setModalInputFilters(updatedFilters);
-                                                    setTimeout(() => setIsFilteringModal(false), 300);
                                                     
+                                                    // Ordenar automaticamente por vigência em ordem crescente
+                                                    setModalSort({ key: "vigencia_fim", asc: true });
+                                                    
+                                                    setTimeout(() => setIsFilteringModal(false), 300);
                                                     setTimeout(() => {
                                                       setModalOpenFilter(null);
                                                     }, 500);
@@ -731,19 +900,19 @@ export default function TabelaDocumentosPage() {
                                           </>
                                         ) : col.key === "tipo_documento" ? (
                                           <div className="flex flex-col gap-3 p-3 min-w-[180px]">
-                                            <select
+                                          <select
                                               className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
                                               value={modalInputFilters.tipo_documento}
-                                              onChange={e => setModalInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                                            >
-                                              <option value="">Todos</option>
-                                              <option value="proposta">Proposta</option>
-                                              <option value="apolice">Apólice</option>
-                                              <option value="endosso">Endosso</option>
-                                              <option value="cancelado">Cancelado</option>
-                                              <option value="renovação">Renovação</option>
-                                              <option value="novo">Novo</option>
-                                            </select>
+                                            onChange={e => setModalInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
+                                          >
+                                            <option value="">Todos</option>
+                                            <option value="proposta">Proposta</option>
+                                            <option value="apolice">Apólice</option>
+                                            <option value="endosso">Endosso</option>
+                                            <option value="cancelado">Cancelado</option>
+                                            <option value="renovação">Renovação</option>
+                                            <option value="novo">Novo</option>
+                                          </select>
                                             <div className="flex justify-between items-center gap-2">
                                               <button 
                                                 className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
@@ -751,6 +920,9 @@ export default function TabelaDocumentosPage() {
                                                   setIsFilteringModal(true);
                                                   setModalFilters(modalInputFilters);
                                                   setTimeout(() => setIsFilteringModal(false), 300);
+                                                  setTimeout(() => {
+                                                    setModalOpenFilter(null);
+                                                  }, 500);
                                                 }}
                                                 disabled={isFilteringModal}
                                               >
@@ -775,13 +947,13 @@ export default function TabelaDocumentosPage() {
                                           </div>
                                         ) : (
                                           <div className="flex flex-col gap-3 p-3 min-w-[180px]">
-                                            <input
+                                          <input
                                               className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
                                               style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '100%'}}
-                                              value={modalInputFilters[col.key as keyof typeof modalInputFilters] || ""}
-                                              onChange={e => setModalInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                                              placeholder="Buscar..."
-                                            />
+                                            value={modalInputFilters[col.key as keyof typeof modalInputFilters] || ""}
+                                            onChange={e => setModalInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
+                                            placeholder="Buscar..."
+                                          />
                                             <div className="flex justify-between items-center gap-2">
                                               <button 
                                                 className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
@@ -789,6 +961,9 @@ export default function TabelaDocumentosPage() {
                                                   setIsFilteringModal(true);
                                                   setModalFilters(modalInputFilters);
                                                   setTimeout(() => setIsFilteringModal(false), 300);
+                                                  setTimeout(() => {
+                                                    setModalOpenFilter(null);
+                                                  }, 500);
                                                 }}
                                                 disabled={isFilteringModal}
                                               >
@@ -854,11 +1029,22 @@ export default function TabelaDocumentosPage() {
                                               </span>
                                             );
                                           } else if (col.key === "numero") {
-                                            value = doc.tipo_documento === "apolice"
+                                            let numero = doc.tipo_documento === "apolice"
                                               ? doc.proposta.apolice || doc.proposta.numero || doc.id.substring(0, 8)
                                               : doc.tipo_documento === "endosso"
                                                 ? doc.proposta.endosso || doc.proposta.numero || doc.id.substring(0, 8)
                                                 : doc.proposta.numero || doc.id.substring(0, 8);
+                                            const seguradora = (doc.proposta.cia_seguradora || '').toLowerCase();
+                                            if (seguradora.includes('hdi')) {
+                                              if (numero && numero.includes('.')) {
+                                                numero = numero.split('.').pop();
+                                              }
+                                            } else if (seguradora.includes('allianz') && doc.tipo_documento === 'apolice') {
+                                              if (numero && numero.length > 7) {
+                                                numero = numero.slice(-7);
+                                              }
+                                            }
+                                            value = numero;
                                           } else if ((col.key as string) === 'segurado') {
                                             value = doc.segurado.nome;
                                           } else if (col.key === "placa") {
@@ -935,28 +1121,6 @@ export default function TabelaDocumentosPage() {
                 </DialogContent>
               </Dialog>
               <button
-                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm border border-blue-700 text-white transition-colors"
-                onClick={() => {
-                  const emptyFilters = {
-                    tipo_documento: "",
-                    numero: "",
-                    segurado: "",
-                    cpf: "",
-                    placa: "",
-                    veiculo: "",
-                    cia_seguradora: "",
-                    vigencia_fim: "",
-                    vigencia_inicio: "",
-                    vigencia_fim_range: "",
-                  };
-                  setInputFilters(emptyFilters);
-                  setFilters(emptyFilters);
-                  setVigenciaRange(undefined);
-                }}
-              >
-                Limpar Filtros
-              </button>
-              <button
                 className="px-4 py-2 rounded bg-neutral-800 hover:bg-neutral-700 text-sm border border-neutral-700 transition-colors"
                 onClick={() => setShowAllRows((v) => !v)}
               >
@@ -970,6 +1134,184 @@ export default function TabelaDocumentosPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="overflow-x-auto rounded-lg border border-gray-800"
           >
+            {/* Histórico de filtros aplicados - agora mais próximo da tabela */}
+            <div className="mb-2 mt-2">
+              {Object.entries(filters).some(([key, value]) => value && key !== 'vigencia_inicio') && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-sm text-gray-400 ml-2">Filtros aplicados:</span>
+                  
+                  {filters.tipo_documento && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Documento: {filters.tipo_documento.charAt(0).toUpperCase() + filters.tipo_documento.slice(1)}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                onClick={() => {
+                          const updatedFilters = {...filters, tipo_documento: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.numero && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Número: {filters.numero}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, numero: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.segurado && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Segurado: {filters.segurado}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, segurado: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.cpf && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      CPF/CNPJ: {filters.cpf}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, cpf: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.placa && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Placa: {filters.placa}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, placa: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.veiculo && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Veículo: {filters.veiculo}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, veiculo: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.cia_seguradora && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Seguradora: {filters.cia_seguradora}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, cia_seguradora: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.vigencia_fim && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Vigência: {filters.vigencia_fim}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, vigencia_fim: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {filters.vigencia_fim_range && (
+                    <span className="px-2 py-1 rounded-full bg-blue-900/50 text-blue-100 text-xs flex items-center gap-1 border border-blue-700">
+                      Período vigência: {filters.vigencia_fim_range.replace(/-/g, '/').replace(' - ', ' até ')}
+                      <button 
+                        className="ml-1 hover:text-white" 
+                        onClick={() => {
+                          const updatedFilters = {...filters, vigencia_fim_range: ""};
+                          setFilters(updatedFilters);
+                          setInputFilters(updatedFilters);
+                          setVigenciaRange(undefined);
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  )}
+                  
+                  {/* Botão para limpar todos os filtros */}
+                  <button
+                    className="px-2 py-1 rounded-full bg-red-900/30 text-red-100 text-xs flex items-center gap-1 border border-red-900 hover:bg-red-800/30"
+                    onClick={() => {
+                      const emptyFilters = {
+                    tipo_documento: "",
+                    numero: "",
+                    segurado: "",
+                    cpf: "",
+                    placa: "",
+                    veiculo: "",
+                    cia_seguradora: "",
+                    vigencia_fim: "",
+                    vigencia_inicio: "",
+                    vigencia_fim_range: "",
+                      };
+                      setInputFilters(emptyFilters);
+                      setFilters(emptyFilters);
+                  setVigenciaRange(undefined);
+                }}
+              >
+                    <Trash2 size={14} /> Limpar todos
+              </button>
+            </div>
+              )}
+            </div>
+            
             <TooltipProvider>
             <table className="min-w-full text-sm">
               <thead className="bg-neutral-900">
@@ -1008,6 +1350,9 @@ export default function TabelaDocumentosPage() {
                                         setFilters(updatedFilters);
                                         setInputFilters(updatedFilters);
                                         
+                                        // Ordenar automaticamente por vigência em ordem crescente
+                                        setSort({ key: "vigencia_fim", asc: true });
+                                        
                                         setTimeout(() => {
                                           setOpenFilter(null);
                                         }, 500);
@@ -1035,21 +1380,26 @@ export default function TabelaDocumentosPage() {
                               </>
                             ) : col.key === "tipo_documento" ? (
                             <div className="flex flex-col gap-3 p-3 min-w-[180px]">
-                              <select
+                            <select
                                 className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
                                 value={inputFilters.tipo_documento}
                                 onChange={e => setInputFilters(f => ({ ...f, tipo_documento: e.target.value }))}
-                              >
-                                <option value="">Todos</option>
-                                <option value="proposta">Proposta</option>
-                                <option value="apolice">Apólice</option>
-                                <option value="endosso">Endosso</option>
-                                <option value="cancelado">Cancelado</option>
-                              </select>
+                            >
+                              <option value="">Todos</option>
+                              <option value="proposta">Proposta</option>
+                              <option value="apolice">Apólice</option>
+                              <option value="endosso">Endosso</option>
+                              <option value="cancelado">Cancelado</option>
+                            </select>
                               <div className="flex justify-between items-center gap-2">
                                 <button 
                                   className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
-                                  onClick={() => setFilters(inputFilters)}
+                                  onClick={() => {
+                                    setFilters(inputFilters);
+                                    setTimeout(() => {
+                                      setOpenFilter(null);
+                                    }, 500);
+                                  }}
                                   disabled={isFiltering}
                                 >
                                   {isFiltering ? (
@@ -1074,18 +1424,23 @@ export default function TabelaDocumentosPage() {
                           ) : (
                             <div className="flex flex-col gap-3 p-3 min-w-[180px]">
                               <div className="relative">
-                                <input
+                            <input
                                   className="bg-neutral-900 border border-gray-700 rounded px-2 py-1.5 text-xs w-full"
                                   style={(col.key as string) === 'segurado' ? {width: '300px'} : {width: '100%'}}
                                   value={inputFilters[col.key as keyof typeof inputFilters] || ""}
                                   onChange={e => setInputFilters(f => ({ ...f, [col.key]: e.target.value }))}
-                                  placeholder="Buscar..."
-                                />
+                              placeholder="Buscar..."
+                            />
                               </div>
                               <div className="flex justify-between items-center gap-2">
                                 <button 
                                   className="text-xs px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white flex-1" 
-                                  onClick={() => setFilters(inputFilters)}
+                                  onClick={() => {
+                                    setFilters(inputFilters);
+                                    setTimeout(() => {
+                                      setOpenFilter(null);
+                                    }, 500);
+                                  }}
                                   disabled={isFiltering}
                                 >
                                   {isFiltering ? (
