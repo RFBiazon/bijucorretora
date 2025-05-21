@@ -1,5 +1,10 @@
 "use client";
 
+/* 
+ * Componente de Upload de Documentos 
+ * Atualizado para novo deploy: $(new Date().toISOString())
+ */
+
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -191,7 +196,7 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
           tipo_arquivo: arquivoInfo.tipoArquivo,
           drive_link: arquivoInfo.driveLink
         }]);
-      
+    
       if (error) {
         console.error("Erro ao inserir no Supabase:", error.code, error.message, error.details);
         throw new Error(`Erro ao salvar no banco de dados: ${error.message}`);
@@ -218,8 +223,8 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
       return;
     }
 
-    setIsUploading(true);
-    setStatus('uploading');
+      setIsUploading(true);
+      setStatus('uploading');
     
     try {
       // Variável para armazenar o link do Drive obtido na operação atual
@@ -251,36 +256,36 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
         if (!webhookUrl) {
           throw new Error("URL do webhook não configurada");
         }
-        
-        // Preparar FormData para o upload do arquivo
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('documentoId', documentoId);
-        formData.append('nomeSegurado', nomeSegurado);
-        formData.append('nomeArquivo', file.name);
+      
+      // Preparar FormData para o upload do arquivo
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentoId', documentoId);
+      formData.append('nomeSegurado', nomeSegurado);
+      formData.append('nomeArquivo', file.name);
         formData.append('tipoArquivo', tipoArquivo);
         
         // Se estamos usando o webhook de atualização e temos um driveId, enviá-lo
         if (usarWebhookAtualizacao && driveId) {
           console.log('Enviando drive_id:', driveId);
           formData.append('drive_id', driveId);
-        }
-        
-        // Enviar para o webhook
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Erro ao enviar arquivo: ${response.statusText}`);
-        }
-        
-        // Obter a resposta como texto puro (o link do Drive)
-        const driveLink = await response.text();
-        
-        // Verificar se o webhook retornou o link do Google Drive
-        if (driveLink && driveLink.includes('drive.google.com')) {
+      }
+      
+      // Enviar para o webhook
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar arquivo: ${response.statusText}`);
+      }
+      
+      // Obter a resposta como texto puro (o link do Drive)
+      const driveLink = await response.text();
+      
+      // Verificar se o webhook retornou o link do Google Drive
+      if (driveLink && driveLink.includes('drive.google.com')) {
           // Salvar informações no Supabase
           await salvarNoSupabase({
             documentoId,
@@ -301,11 +306,11 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
             }
           }
           
-          setDriveLink(driveLink);
+        setDriveLink(driveLink);
           lastDriveLink = driveLink;
-        } else {
-          throw new Error("Link do Google Drive não retornado pelo servidor");
-        }
+      } else {
+        throw new Error("Link do Google Drive não retornado pelo servidor");
+      }
       }
       
       setStatus('success');
