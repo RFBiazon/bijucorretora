@@ -256,7 +256,7 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
                               defaultMonth={rangeDatas?.from}
                               selected={rangeDatas}
                               onSelect={(date) => {
-                                if (date) setRangeDatas(date);
+                                if (date && date.from) setRangeDatas(date);
                               }}
                               numberOfMonths={2}
                               locale={ptBR}
