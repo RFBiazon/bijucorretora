@@ -256,7 +256,14 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
                               defaultMonth={rangeDatas?.from}
                               selected={rangeDatas}
                               onSelect={(date) => {
-                                if (date && date.from) setRangeDatas(date);
+                                if (date?.from) {
+                                  // Criar um objeto tipado corretamente
+                                  const newRange = {
+                                    from: date.from,
+                                    to: date.to
+                                  };
+                                  setRangeDatas(newRange);
+                                }
                               }}
                               numberOfMonths={2}
                               locale={ptBR}
