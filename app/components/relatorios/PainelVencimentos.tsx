@@ -42,8 +42,12 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
       setIsLoading(true)
       
       // Converter datas para o formato do banco
-      const dataInicio = format(rangeDatas.from, 'yyyy-MM-dd')
-      const dataFim = rangeDatas.to ? format(rangeDatas.to, 'yyyy-MM-dd') : format(addDays(rangeDatas.from, diasFuturos), 'yyyy-MM-dd')
+      const dataInicio = rangeDatas.from ? format(rangeDatas.from, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
+      const dataFim = rangeDatas.to 
+        ? format(rangeDatas.to, 'yyyy-MM-dd') 
+        : rangeDatas.from 
+          ? format(addDays(rangeDatas.from, diasFuturos), 'yyyy-MM-dd')
+          : format(addDays(new Date(), diasFuturos), 'yyyy-MM-dd')
       
       const { data, error } = await supabase
         .from('parcelas_pagamento')
@@ -167,6 +171,13 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
     return proposta?.cia_seguradora || '-'
   }
 
+  // Handlers para atualizar o range de datas com segurança de tipos
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    if (range) {
+      setRangeDatas(range)
+    }
+  }
+
   return (
     <Card className="mt-6">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
@@ -241,9 +252,9 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
                             <Calendar
                               initialFocus
                               mode="range"
-                              defaultMonth={rangeDatas?.from}
+                              defaultMonth={rangeDatas?.from || new Date()}
                               selected={rangeDatas}
-                              onSelect={(range: DateRange | undefined) => range && setRangeDatas(range)}
+                              onSelect={handleDateRangeSelect}
                               numberOfMonths={2}
                               locale={ptBR}
                             />
