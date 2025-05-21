@@ -291,33 +291,33 @@ function extrairDadosFinanceiros(dadosOriginais: any) {
       // }
       
       // Extrair forma de pagamento
-      const formaPagamento = normalizarFormaPagamento(valores.forma_pagamento || "Não informado");
+      const formaPagamento = normalizarFormaPagamento((valores as any).forma_pagamento || "Não informado");
       console.log("Forma de pagamento:", formaPagamento);
       
       // Extrair quantidade de parcelas
       let quantidadeParcelas = 1;
-      if (valores?.parcelamento?.quantidade) {
+      if ((valores as any)?.parcelamento?.quantidade) {
         // O valor pode ser apenas o número ou pode incluir "parcelas"
-        quantidadeParcelas = parseInt(valores.parcelamento.quantidade) || 1;
+        quantidadeParcelas = parseInt((valores as any).parcelamento.quantidade) || 1;
       }
       console.log("Quantidade de parcelas:", quantidadeParcelas);
       
       // Extrair valor total
-      const valorTotal = extrairValorNumerico(valores.preco_total);
+      const valorTotal = extrairValorNumerico((valores as any).preco_total);
       console.log("Valor total:", valorTotal);
       
       // Extrair prêmio líquido
-      const premioLiquido = extrairValorNumerico(valores.preco_liquido);
+      const premioLiquido = extrairValorNumerico((valores as any).preco_liquido);
       console.log("Prêmio líquido:", premioLiquido);
       
       // Extrair IOF
-      const iof = extrairValorNumerico(valores.iof);
+      const iof = extrairValorNumerico((valores as any).iof);
       console.log("IOF:", iof);
       
       // Extrair valor da parcela
       let valorParcela = 0;
-      if (valores?.parcelamento?.valor_parcela) {
-        valorParcela = extrairValorNumerico(valores.parcelamento.valor_parcela);
+      if ((valores as any)?.parcelamento?.valor_parcela) {
+        valorParcela = extrairValorNumerico((valores as any).parcelamento.valor_parcela);
       } else if (valorTotal > 0 && quantidadeParcelas > 0) {
         valorParcela = valorTotal / quantidadeParcelas;
       }
@@ -428,7 +428,7 @@ function extrairDadosFinanceiros(dadosOriginais: any) {
       
       if (textoValorParcela.includes(" a R$")) {
         // Formato "R$ X,XX a R$ Y,YY"
-        const partes = textoValorParcela.split(" a R$").map(p => p.trim());
+        const partes = textoValorParcela.split(" a R$").map((p: string) => p.trim());
         const valor1 = extrairValorNumerico(partes[0]);
         const valor2 = extrairValorNumerico("R$ " + partes[1]);
         
@@ -935,6 +935,18 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
       console.log("Valor total calculado:", valorTotalAtualizado);
       
       // 2. Preparar dados para atualização
+      const dataVencimento = parcelas[0].data_vencimento 
+          ? (typeof parcelas[0].data_vencimento === 'string' 
+              ? parcelas[0].data_vencimento 
+              : (parcelas[0].data_vencimento as Date).toISOString().split('T')[0])
+          : null;
+
+      const dataPagamento = parcelas[0].data_pagamento 
+          ? (typeof parcelas[0].data_pagamento === 'string' 
+              ? parcelas[0].data_pagamento 
+              : (parcelas[0].data_pagamento as Date).toISOString().split('T')[0])
+          : null;
+
       const dadosParaAtualizar = {
         forma_pagamento: formaPagamento,
         quantidade_parcelas: novaQuantidadeParcelas,
@@ -970,16 +982,8 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
         // Garantir que os campos de data estejam no formato correto
         const dadosParcelaParaAtualizar = {
           valor: parcela.valor,
-          data_vencimento: parcela.data_vencimento 
-            ? (typeof parcela.data_vencimento === 'string' 
-                ? parcela.data_vencimento 
-                : parcela.data_vencimento.toISOString().split('T')[0])
-            : null,
-          data_pagamento: parcela.data_pagamento 
-            ? (typeof parcela.data_pagamento === 'string' 
-                ? parcela.data_pagamento 
-                : parcela.data_pagamento.toISOString().split('T')[0])
-            : null,
+          data_vencimento: dataVencimento,
+          data_pagamento: dataPagamento,
           status: parcela.status
         };
         
@@ -1054,12 +1058,13 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
       ? parcelas.reduce((total, parcela) => total + parcela.valor, 0) / parcelas.length
       : dadosFinanceiros.valor_total;
     
-    const novaParcela: Partial<Parcela> = {
+    // Usando interface compatível com a tabela no banco de dados
+    const novaParcela = {
       dados_financeiros_id: dadosFinanceiros.id,
       numero_parcela: ultimaParcela ? ultimaParcela.numero_parcela + 1 : 1,
       valor: valorMedio,
       data_vencimento: dataVencimento,
-      status: "pendente"
+      status: "pendente" as const
     };
     
     console.log("Nova parcela a adicionar:", novaParcela);
