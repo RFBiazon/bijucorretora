@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,7 @@ import {
   Loader2,
   AlertCircle,
   MoreVertical,
+  Upload,
 } from "lucide-react"
 import { cloneDeep } from "lodash"
 import PageTransition from "@/components/PageTransition"
@@ -32,6 +33,8 @@ import MotionDiv from "@/components/MotionDiv"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { PainelPagamentos } from "@/components/gestao-pagamentos/PainelPagamentos"
+import { UploadDocumentos } from "@/app/components/UploadDocumentos"
 
 type SectionKey = keyof DadosProposta
 type NestedField = keyof DadosProposta[SectionKey]
@@ -39,6 +42,7 @@ type NestedField = keyof DadosProposta[SectionKey]
 export default function PropostaDetalhesPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [proposta, setProposta] = useState<PropostaProcessada | null>(null)
@@ -46,6 +50,14 @@ export default function PropostaDetalhesPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [tabAtiva, setTabAtiva] = useState("proposta")
   const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
+
+  // Ativar a aba correta ao montar a página, se houver parâmetro 'tab' na URL
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+    if (tabParam) {
+      setTabAtiva(tabParam)
+    }
+  }, [searchParams])
 
   // Efeito para lidar com atualizações da proposta
   useEffect(() => {
@@ -323,7 +335,18 @@ export default function PropostaDetalhesPage() {
           ) : (
             <div className="flex gap-2 w-full items-center">
               {/* Botão Voltar sempre visível */}
-              <Button variant="outline" onClick={() => router.push("/documentos")}> 
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const tipo = (proposta as any)?.tipo_documento;
+                  let url = "/documentos";
+                  if (tipo === "apolice") url += "?tab=apolices";
+                  else if (tipo === "proposta") url += "?tab=propostas";
+                  else if (tipo === "endosso") url += "?tab=endossos";
+                  else if (tipo === "cancelado") url += "?tab=cancelados";
+                  router.push(url);
+                }}
+              >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar
               </Button>
@@ -457,6 +480,10 @@ export default function PropostaDetalhesPage() {
             <TabsTrigger value="corretor">
               <Building className="h-4 w-4 mr-2" />
               Corretor
+            </TabsTrigger>
+            <TabsTrigger value="anexos">
+              <Upload className="h-4 w-4 mr-2" />
+              Anexos
             </TabsTrigger>
           </TabsList>
         </div>
@@ -1173,9 +1200,45 @@ export default function PropostaDetalhesPage() {
                         </Card>
                       </MotionDiv>
                     </div>
+                    
+                    {/* Painel de Pagamentos */}
+                    {proposta && (
+                      <MotionDiv
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                      >
+                        <PainelPagamentos
+                          documentoId={proposta.id}
+                          tipoDocumento={(proposta as any)?.tipo_documento || "proposta"}
+                          dadosOriginais={proposta.resultado}
+                        />
+                      </MotionDiv>
+                    )}
                   </MotionDiv>
                 )}
               </AnimatePresence>
+        </TabsContent>
+
+        <TabsContent value="anexos">
+          <AnimatePresence mode="wait">
+            {tabAtiva === "anexos" && (
+              <MotionDiv
+                key="anexos"
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+              >
+                <div className="grid grid-cols-1 gap-6">
+                  <UploadDocumentos 
+                    documentoId={proposta.id} 
+                    nomeSegurado={(editedProposta as any)?.segurado?.nome || ""}
+                  />
+                </div>
+              </MotionDiv>
+            )}
+          </AnimatePresence>
         </TabsContent>
 
         <TabsContent value="todas" className="space-y-4">

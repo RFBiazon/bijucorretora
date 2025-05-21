@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ type DocumentoProcessado = {
     cia_seguradora?: string
     apolice?: string
     endosso?: string
+    forma_pagto?: string
   }
   segurado: {
     nome?: string
@@ -44,6 +45,15 @@ type DocumentoProcessado = {
   veiculo: {
     marca_modelo?: string
     placa?: string
+  }
+  parcelas?: {
+    formaPagamento: string
+    proximaParcela: {
+      numero: number
+      valor: number
+      data_vencimento: string
+      status: string
+    } | null
   }
 }
 
@@ -57,6 +67,7 @@ export default function PropostasPage() {
   const [novaPropostaId, setNovaPropostaId] = useState<string | null>(null)
   const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
   const [tab, setTab] = useState("todas")
+  const [documentosComParcelas, setDocumentosComParcelas] = useState<Set<string>>(new Set())
 
   const fetchPropostas = async () => {
     try {
@@ -254,13 +265,165 @@ export default function PropostasPage() {
     return true;
   });
 
+  // Função para buscar informações de parcelas para um documento
+  const buscarInfoParcelas = useCallback(async (documento: DocumentoProcessado) => {
+    if (documentosComParcelas.has(documento.id)) return documento;
+    
+    try {
+      // Primeiro, busca os dados financeiros
+      const { data: dadosFinanceiros } = await supabase
+        .from("dados_financeiros")
+        .select("*")
+        .eq("documento_id", documento.id)
+        .single();
+      
+      if (!dadosFinanceiros) return documento;
+      
+      // Buscar parcelas associadas
+      const { data: parcelas } = await supabase
+        .from("parcelas_pagamento")
+        .select("*")
+        .eq("dados_financeiros_id", dadosFinanceiros.id)
+        .order("numero_parcela", { ascending: true });
+      
+      if (!parcelas || parcelas.length === 0) return documento;
+      
+      // Determinar a próxima parcela a ser exibida
+      let proximaParcela = null;
+      
+      if (documento.tipo_documento === "proposta") {
+        // Para propostas, mostrar a primeira parcela (parcela de entrada)
+        proximaParcela = parcelas[0];
+      } else {
+        // Para apólices, endossos ou cancelados, mostrar a parcela posterior à última paga
+        const parcelasPagas = parcelas.filter(p => p.status === "pago");
+        const ultimaParcelaPaga = parcelasPagas.length > 0 
+          ? parcelasPagas.sort((a, b) => b.numero_parcela - a.numero_parcela)[0] 
+          : null;
+        
+        if (ultimaParcelaPaga) {
+          // Encontrar a próxima parcela após a última paga
+          proximaParcela = parcelas.find(p => p.numero_parcela > ultimaParcelaPaga.numero_parcela) || null;
+        } else {
+          // Se nenhuma parcela foi paga, mostrar a primeira
+          proximaParcela = parcelas[0];
+        }
+      }
+      
+      // Atualizar o documento com as informações de parcelas
+      documento.parcelas = {
+        formaPagamento: dadosFinanceiros.forma_pagamento,
+        proximaParcela: proximaParcela ? {
+          numero: proximaParcela.numero_parcela,
+          valor: proximaParcela.valor,
+          data_vencimento: proximaParcela.data_vencimento,
+          status: proximaParcela.status
+        } : null
+      };
+      
+      // Marcar documento como já processado
+      setDocumentosComParcelas(prev => new Set([...prev, documento.id]));
+      
+      return documento;
+    } catch (error) {
+      console.error("Erro ao buscar informações de parcelas:", error);
+      return documento;
+    }
+  }, [documentosComParcelas]);
+
+  // Este efeito carrega parcelas quando propostas são carregadas inicialmente
+  useEffect(() => {
+    if (!isLoading && propostas.length > 0) {
+      // Pegar todos os documentos sem parcelas
+      const documentosSemParcelas = propostas.filter(doc => !doc.parcelas);
+      if (documentosSemParcelas.length > 0) {
+        console.log(`Buscando parcelas para ${documentosSemParcelas.length} documentos`);
+        
+        // Processar todos os documentos sem parcelas
+        Promise.all(documentosSemParcelas.map(doc => buscarInfoParcelas(doc)))
+          .then(documentosProcessados => {
+            // Atualizar a lista de propostas com os documentos processados
+            setPropostas(prev => 
+              prev.map(doc => {
+                const docProcessado = documentosProcessados.find(d => d.id === doc.id);
+                return docProcessado || doc;
+              })
+            );
+          });
+      }
+    }
+  }, [isLoading, propostas.length, buscarInfoParcelas]);
+
+  // Atualizar as informações de parcelas quando as propostas filtradas mudarem
+  useEffect(() => {
+    // Buscar parcelas para TODOS os documentos exibidos, independente da aba
+    const documentosSemParcelas = propostasFiltradas.filter(doc => !doc.parcelas);
+    
+    if (documentosSemParcelas.length > 0) {
+      // Processar todos os documentos sem informações de parcelas
+      Promise.all(documentosSemParcelas.map(doc => buscarInfoParcelas(doc)))
+        .then(documentosProcessados => {
+          // Atualizar a lista de propostas filtradas com os documentos processados
+          setPropostasFiltradas(prev => 
+            prev.map(doc => {
+              const docProcessado = documentosProcessados.find(d => d.id === doc.id);
+              return docProcessado || doc;
+            })
+          );
+        });
+    }
+  }, [propostasFiltradas, buscarInfoParcelas]);
+
   const renderPropostaCard = (proposta: DocumentoProcessado) => {
+    // Função para formatar data no formato brasileiro
+    const formatarData = (dataString: string) => {
+      if (!dataString) return "N/A";
+      const data = new Date(dataString);
+      return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    };
+    
+    // Função para formatar valor monetário
+    const formatarMoeda = (valor: number) => {
+      return valor.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    };
+
+    // Função para obter status em formato legível
+    const getStatusParcela = (status: string, dataVencimento: string) => {
+      if (status === "pago") return "Pago";
+      if (status === "cancelado") return "Cancelado";
+      if (status === "atrasado") return "Atrasado";
+      
+      // Verificar se é pendente, vence hoje ou à vencer com base na data de vencimento
+      if (status === "pendente") {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const dataVenc = new Date(dataVencimento);
+        dataVenc.setHours(0, 0, 0, 0);
+        
+        // Se a data de vencimento for exatamente hoje
+        if (dataVenc.getTime() === hoje.getTime()) {
+          return "Vence hoje";
+        }
+        
+        // Se a data de vencimento for maior que hoje, está à vencer
+        // Se for menor que hoje, está pendente (atrasada)
+        return dataVenc > hoje ? "À vencer" : "Pendente";
+      }
+      
+      return status;
+    };
+
     return (
       <Card
         key={proposta.id}
-        className={"overflow-hidden transition-all duration-300 bg-black dark:bg-black border border-gray-800 min-h-[250px] max-h-[290px] h-full flex flex-col justify-between"}
+        className={"overflow-hidden transition-all duration-300 bg-black dark:bg-black border border-gray-800 h-full flex flex-col justify-between"}
       >
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-1">
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg font-mono flex items-center">
@@ -274,23 +437,83 @@ export default function PropostasPage() {
             {proposta.proposta.cia_seguradora}
           </CardDescription>
         </CardHeader>
-        <CardContent className="pb-2">
+        <CardContent className="pb-1">
           <div className="flex flex-col gap-1">
-            <p className="text-base font-semibold mt-2 mb-1 truncate max-w-full">{proposta.segurado.nome}</p>
-            <p className="text-sm text-muted-foreground mb-1 truncate max-w-full">
+            <p className="text-base font-semibold mt-2 mb-0 truncate max-w-full">{proposta.segurado.nome}</p>
+            <p className="text-sm text-muted-foreground mb-0 truncate max-w-full">
               CPF: {proposta.segurado.cpf}
             </p>
-            <p className="text-sm text-muted-foreground mb-1 truncate max-w-full">
+            <p className="text-sm text-muted-foreground mb-0 truncate max-w-full">
               {proposta.veiculo.marca_modelo}
             </p>
             {proposta.veiculo.placa && (
-              <p className="text-sm text-muted-foreground mb-2 truncate max-w-full">
+              <p className="text-sm text-muted-foreground truncate max-w-full">
                 Placa: {proposta.veiculo.placa}
               </p>
             )}
+            
+            {/* Informações de parcelas */}
+            {proposta.parcelas?.proximaParcela ? (
+              <div className="mt-0.5 text-xs border-t border-gray-800 pt-0.5">
+                {proposta.parcelas?.formaPagamento === "Cartão de Crédito" ? (
+                  <p className="text-muted-foreground">
+                    <span className="text-primary">Pagamento:</span> Cartão de Crédito
+                  </p>
+                ) : proposta.tipo_documento === "proposta" ? (
+                  <>
+                    <p className="text-muted-foreground">
+                      <span className="text-primary">Parcela de Entrada:</span> {formatarData(proposta.parcelas?.proximaParcela?.data_vencimento || '')}
+                    </p>
+                    <p className="text-muted-foreground flex justify-between">
+                      <span>Valor: {formatarMoeda(proposta.parcelas?.proximaParcela?.valor || 0)}</span>
+                      <span className={`${proposta.parcelas?.proximaParcela?.status === 'atrasado' ? 'text-red-500' : 
+                        proposta.parcelas?.proximaParcela?.status === 'pago' ? 'text-green-500' : 
+                        getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'À vencer' ? 'text-blue-500' : 
+                        getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Vence hoje' ? 'text-yellow-500' : 
+                        'text-yellow-500'}`}>
+                        {proposta.tipo_documento.includes("cancelado") ? "Cancelado" : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '')}
+                      </span>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">
+                      <span className="text-primary">
+                        {(() => {
+                          const numParcela = proposta.parcelas?.proximaParcela?.numero;
+                          const parcelaStr = String(numParcela || '');
+                          
+                          if (parcelaStr === '1' || parcelaStr.toLowerCase().includes('vista')) {
+                            return 'Primeira Parcela:';
+                          } else {
+                            return `Próxima Parcela [${numParcela}]:`;
+                          }
+                        })()}
+                      </span> {formatarData(proposta.parcelas?.proximaParcela?.data_vencimento || '')}
+                    </p>
+                    <p className="text-muted-foreground flex justify-between">
+                      <span>Valor: {formatarMoeda(proposta.parcelas?.proximaParcela?.valor || 0)}</span>
+                      <span className={`${proposta.parcelas?.proximaParcela?.status === 'atrasado' ? 'text-red-500' : 
+                        proposta.parcelas?.proximaParcela?.status === 'pago' ? 'text-green-500' : 
+                        getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'À vencer' ? 'text-blue-500' : 
+                        getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Vence hoje' ? 'text-yellow-500' : 
+                        'text-yellow-500'}`}>
+                        {proposta.tipo_documento.includes("cancelado") ? "Cancelado" : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '')}
+                      </span>
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : proposta.proposta.forma_pagto === "cartão de crédito" || proposta.proposta.forma_pagto === "cartao de credito" ? (
+              <div className="mt-0.5 text-xs border-t border-gray-800 pt-0.5">
+                <p className="text-muted-foreground">
+                  <span className="text-primary">Pagamento:</span> Cartão de Crédito
+                </p>
+              </div>
+            ) : null}
           </div>
         </CardContent>
-        <CardFooter className="pt-2 flex justify-between items-center mt-auto">
+        <CardFooter className="pt-1 flex justify-between items-center mt-auto">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground">
               {proposta.criado_em || proposta.created_at

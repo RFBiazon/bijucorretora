@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Car, Home, FileText, Menu, X, LogOut } from "lucide-react"
+import { Car, Home, FileText, Menu, X, LogOut, CreditCard } from "lucide-react"
 import { useState } from "react"
 import { supabase } from "@/lib/supabase"
 
@@ -31,6 +31,12 @@ export function Navbar() {
       label: "Documentos",
       icon: FileText,
       active: pathname === "/documentos" || pathname.startsWith("/documentos/"),
+    },
+    {
+      href: "/administracao/pagamentos",
+      label: "Gestão de Pagamentos",
+      icon: CreditCard,
+      active: pathname === "/administracao/pagamentos",
     },
     {
       href: "/relatorios",

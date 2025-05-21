@@ -9,6 +9,7 @@ import { Overview } from "@/components/dashboard/overview"
 import { RecentSales } from "@/components/dashboard/recent-sales"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import PageTransition from "@/components/PageTransition"
+import { PainelVencimentos } from "@/components/relatorios/PainelVencimentos"
 
 export default function DashboardPage() {
   const [totalPropostas, setTotalPropostas] = useState(0)
@@ -94,6 +95,8 @@ export default function DashboardPage() {
               </Card>
             </div>
           </AnimatedElement>
+
+          <PainelVencimentos diasFuturos={30} limitarQuantidade={5} />
         </div>
       </PageTransition>
     </ProtectedRoute>
