@@ -74,6 +74,23 @@ export interface DadosFinanceirosExtraidos {
   valoresParcelas: number[];
 }
 
+// Definindo interface para o objeto valores
+interface ValoresExtracao {
+  forma_pagamento?: string;
+  forma_pagto?: string;
+  preco_total?: any;
+  preco_liquido?: any;
+  iof?: any;
+  premio_total?: number;
+  premio_liquido?: number;
+  quantidade_parcelas?: number;
+  parcelamento?: {
+    quantidade?: any;
+    valor_parcela?: any;
+  };
+  [key: string]: any; // Para permitir outras propriedades
+}
+
 export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosExtraidos {
   console.log("=== EXTRAÇÃO DE DADOS FINANCEIROS ===");
   console.log("Dados originais:", dadosOriginais);
@@ -88,13 +105,13 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
 
   // Verificar se temos o objeto valores no formato esperado
   // Tentar múltiplos caminhos possíveis
-  const valoresDireto = dadosOriginais?.valores || {};
-  const valoresAninhado = dadosOriginais?.resultado?.valores || {};
-  const valoresProposta = dadosOriginais?.proposta || {};
-  const valoresPropostaAninhado = dadosOriginais?.resultado?.proposta || {};
+  const valoresDireto: ValoresExtracao = dadosOriginais?.valores || {};
+  const valoresAninhado: ValoresExtracao = dadosOriginais?.resultado?.valores || {};
+  const valoresProposta: ValoresExtracao = dadosOriginais?.proposta || {};
+  const valoresPropostaAninhado: ValoresExtracao = dadosOriginais?.resultado?.proposta || {};
   
   // Tentar obter valores do objeto mais completo
-  let valores = {};
+  let valores: ValoresExtracao = {};
   
   // Verificar qual caminho tem mais informações úteis
   if (valoresAninhado && Object.keys(valoresAninhado).length > 0 && (valoresAninhado.preco_total || valoresAninhado.parcelamento)) {
@@ -208,11 +225,11 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
   console.log("Tentando método alternativo de extração");
   
   // Outras tentativas com múltiplas fontes
-  const valoresApolice = dadosOriginais?.valores_apolice || {};
+  const valoresApolice: ValoresExtracao = dadosOriginais?.valores_apolice || {};
   console.log("Objeto valores_apolice:", valoresApolice);
   
   // Checar se valores está em formato string
-  let valoresObjeto = {};
+  let valoresObjeto: ValoresExtracao = {};
   if (typeof dadosOriginais?.valores === 'string') {
     try {
       valoresObjeto = JSON.parse(dadosOriginais.valores);
@@ -223,7 +240,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
   }
   
   // Combinar todas as fontes possíveis
-  const todasFontes = [valores, valoresApolice, valoresObjeto, dadosOriginais?.proposta || {}];
+  const todasFontes: ValoresExtracao[] = [valores, valoresApolice, valoresObjeto, dadosOriginais?.proposta || {}];
   
   // Forma de pagamento - verificar em todas as fontes
   let formaPagamento = '';
