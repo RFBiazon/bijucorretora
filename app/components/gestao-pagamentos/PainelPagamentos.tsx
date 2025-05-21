@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 // Tipos para os dados financeiros
 interface Parcela {
   id: string
+  dados_financeiros_id: string
   numero_parcela: number
   valor: number
   data_vencimento: string | null
