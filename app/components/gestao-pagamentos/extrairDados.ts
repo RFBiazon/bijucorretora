@@ -298,7 +298,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
       
       if (textoValorParcela.includes(" a R$")) {
         // Formato "R$ X,XX a R$ Y,YY"
-        const partes = textoValorParcela.split(" a R$").map(p => p.trim());
+        const partes = textoValorParcela.split(" a R$").map((p: string) => p.trim());
         const valor1 = extrairValorNumerico(partes[0]);
         const valor2 = extrairValorNumerico("R$ " + partes[1]);
         
@@ -309,7 +309,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
         } else if (quantidadeParcelas === 3) {
           valoresParcelas = [valor1, valor1, valor2];
         } else {
-          valoresParcelas = Array(quantidadeParcelas).fill(0).map((_, i) => 
+          valoresParcelas = Array(quantidadeParcelas).fill(0).map((_, i: number) => 
             i === quantidadeParcelas - 1 ? valor2 : valor1
           );
         }
