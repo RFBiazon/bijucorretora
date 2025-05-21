@@ -127,7 +127,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
       preco_liquido: valoresPropostaAninhado.premio_liquido || 0,
       parcelamento: {
         quantidade: valoresPropostaAninhado.quantidade_parcelas || 1,
-        valor_parcela: (valoresPropostaAninhado.premio_total / valoresPropostaAninhado.quantidade_parcelas) || 0
+        valor_parcela: ((valoresPropostaAninhado.premio_total || 0) / (valoresPropostaAninhado.quantidade_parcelas || 1)) || 0
       }
     };
     console.log("Usando valores convertidos de dadosOriginais.resultado.proposta");
@@ -138,7 +138,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
       preco_liquido: valoresProposta.premio_liquido || 0,
       parcelamento: {
         quantidade: valoresProposta.quantidade_parcelas || 1,
-        valor_parcela: (valoresProposta.premio_total / valoresProposta.quantidade_parcelas) || 0
+        valor_parcela: ((valoresProposta.premio_total || 0) / (valoresProposta.quantidade_parcelas || 1)) || 0
       }
     };
     console.log("Usando valores convertidos de dadosOriginais.proposta");
