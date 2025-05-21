@@ -140,7 +140,7 @@ export async function recriarTodosPagamentos() {
     
   } catch (erro) {
     console.error("Erro ao recriar pagamentos:", erro);
-    toast.error("Erro ao recriar pagamentos: " + erro.message);
+    toast.error("Erro ao recriar pagamentos: " + (erro instanceof Error ? erro.message : String(erro)));
     throw erro;
   }
 } 
