@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DateRange } from "react-day-picker"
 
 interface PainelVencimentosProps {
   diasFuturos?: number // Quantos dias para frente considerar como "vencendo em breve"
@@ -25,10 +26,7 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
   const [expanded, setExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [parcelas, setParcelas] = useState<any[]>([])
-  const [rangeDatas, setRangeDatas] = useState<{
-    from: Date;
-    to?: Date;
-  }>({
+  const [rangeDatas, setRangeDatas] = useState<DateRange>({
     from: new Date(),
     to: addDays(new Date(), diasFuturos),
   })
@@ -245,7 +243,7 @@ export function PainelVencimentos({ diasFuturos = 30, limitarQuantidade = 5 }: P
                               mode="range"
                               defaultMonth={rangeDatas?.from}
                               selected={rangeDatas}
-                              onSelect={setRangeDatas}
+                              onSelect={(range: DateRange | undefined) => range && setRangeDatas(range)}
                               numberOfMonths={2}
                               locale={ptBR}
                             />
