@@ -146,33 +146,33 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
   if (Object.keys(valores).length > 0) {
     try {
       // Extrair forma de pagamento
-      const formaPagamento = normalizarFormaPagamento(valores.forma_pagamento || "Não informado");
+      const formaPagamento = normalizarFormaPagamento((valores as any).forma_pagamento || "Não informado");
       console.log("Forma de pagamento:", formaPagamento);
       
       // Extrair quantidade de parcelas
       let quantidadeParcelas = 1;
-      if (valores?.parcelamento?.quantidade) {
+      if ((valores as any)?.parcelamento?.quantidade) {
         // O valor pode ser apenas o número ou pode incluir "parcelas"
-        quantidadeParcelas = parseInt(valores.parcelamento.quantidade) || 1;
+        quantidadeParcelas = parseInt((valores as any).parcelamento.quantidade) || 1;
       }
       console.log("Quantidade de parcelas:", quantidadeParcelas);
       
       // Extrair valor total
-      const valorTotal = extrairValorNumerico(valores.preco_total);
+      const valorTotal = extrairValorNumerico((valores as any).preco_total);
       console.log("Valor total:", valorTotal);
       
       // Extrair prêmio líquido
-      const premioLiquido = extrairValorNumerico(valores.preco_liquido);
+      const premioLiquido = extrairValorNumerico((valores as any).preco_liquido);
       console.log("Prêmio líquido:", premioLiquido);
       
       // Extrair IOF
-      const iof = extrairValorNumerico(valores.iof);
+      const iof = extrairValorNumerico((valores as any).iof);
       console.log("IOF:", iof);
       
       // Extrair valor da parcela
       let valorParcela = 0;
-      if (valores?.parcelamento?.valor_parcela) {
-        valorParcela = extrairValorNumerico(valores.parcelamento.valor_parcela);
+      if ((valores as any)?.parcelamento?.valor_parcela) {
+        valorParcela = extrairValorNumerico((valores as any).parcelamento.valor_parcela);
       } else if (valorTotal > 0 && quantidadeParcelas > 0) {
         valorParcela = valorTotal / quantidadeParcelas;
       }
@@ -281,7 +281,7 @@ export function extrairDadosFinanceiros(dadosOriginais: any): DadosFinanceirosEx
       
       if (textoValorParcela.includes(" a R$")) {
         // Formato "R$ X,XX a R$ Y,YY"
-        const partes = textoValorParcela.split(" a R$").map(p => p.trim());
+        const partes = textoValorParcela.split(" a R$").map((p: string) => p.trim());
         const valor1 = extrairValorNumerico(partes[0]);
         const valor2 = extrairValorNumerico("R$ " + partes[1]);
         
