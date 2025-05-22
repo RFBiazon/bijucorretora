@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, memo } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import "./hover-effects.css"
@@ -39,6 +39,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+
+// Interface para parcela de pagamento
+interface ParcelaPagamento {
+  id: string;
+  dados_financeiros_id: string;
+  numero_parcela: number;
+  valor: number;
+  data_vencimento: string;
+  status: string;
+}
 
 type DocumentoProcessado = {
   id: string
@@ -173,12 +183,373 @@ export default function PropostasPage() {
   })
   const [seguradorasDisponiveis, setSeguradorasDisponiveis] = useState<string[]>([])
   const [formasPagamentoDisponiveis, setFormasPagamentoDisponiveis] = useState<string[]>([])
+  
+  // Estado para armazenar o status de quitação de cada proposta
+  const [statusQuitacao, setStatusQuitacao] = useState<{[id: string]: boolean}>({});
+  
+  // Estado para armazenar documentos com sinistros
+  const [docsComSinistros, setDocsComSinistros] = useState<{[id: string]: boolean}>({});
+  
+  // Estado para armazenar documentos com anexos no Google Drive
+  const [docsComAnexos, setDocsComAnexos] = useState<{[id: string]: boolean}>({});
+
+  // Adicionar estas constantes no início da função PropostasPage
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Adicionar no início da função PropostasPage
+  const BATCH_SIZE = 9; // Número de documentos a serem renderizados por vez
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+
+  // Função para verificar se o seguro está totalmente quitado
+  const isSeguroQuitado = async (proposta: DocumentoProcessado): Promise<boolean> => {
+    // Se não temos o ID do documento, não podemos verificar
+    if (!proposta.id) return false;
+    
+    // Verificar se o método de pagamento é boleto ou débito em conta
+    const formaPagamento = proposta.parcelas?.formaPagamento?.toLowerCase() || "";
+    const isBoletoOuDebito = 
+      formaPagamento.includes("boleto") || 
+      formaPagamento.includes("carnê") || 
+      formaPagamento.includes("carne") || 
+      formaPagamento.includes("débito") || 
+      formaPagamento.includes("debito") ||
+      formaPagamento.includes("à vista") ||
+      formaPagamento.includes("a vista") ||
+      formaPagamento.includes("ficha");
+    
+    if (!isBoletoOuDebito) return false;
+    
+    try {
+      // NOVA IMPLEMENTAÇÃO: primeiro, tentar obter dados financeiros do documento
+      const { data: dadosFinanceiros, error: erroDados } = await supabase
+        .from("dados_financeiros")
+        .select("id")
+        .eq("documento_id", proposta.id)
+        .single();
+        
+      if (!erroDados && dadosFinanceiros?.id) {
+        // Se temos dados financeiros, verificar todas as parcelas
+        const { data: parcelas, error: erroParcelas } = await supabase
+          .from("parcelas_pagamento")
+          .select("status")
+          .eq("dados_financeiros_id", dadosFinanceiros.id);
+          
+        if (!erroParcelas && parcelas && parcelas.length > 0) {
+          // Documento está quitado se TODAS as parcelas estão com status "pago"
+          const todasPagas = parcelas.every(parcela => parcela.status === "pago");
+          console.log(`Documento ${proposta.id}: ${parcelas.length} parcelas, todas pagas: ${todasPagas}`);
+          return todasPagas;
+        }
+      }
+      
+      // Fallback para a lógica anterior caso a consulta direta falhe
+      if (proposta.parcelas?.proximaParcela) {
+        // Usamos uma heurística: se a próxima parcela está paga e é a última 
+        // ou próxima da última, consideramos quitado
+        const status = proposta.parcelas.proximaParcela.status;
+        const numParcela = proposta.parcelas.proximaParcela.numero;
+        const totalParcelas = proposta.parcelas.totalParcelas || 1;
+        
+        // Se é a última parcela e está paga
+        if (status === "pago" && numParcela >= totalParcelas) {
+          return true;
+        }
+        
+        // Se a próxima parcela é a última, então todas as anteriores já foram pagas
+        // Algumas vezes recebemos a última parcela como proximaParcela
+        if (numParcela === totalParcelas) {
+          // Se última parcela está paga, documento está quitado
+          return status === "pago";
+        }
+        
+        // NOVA VERIFICAÇÃO: Se for FICHA DE COMPENSAÇÃO e pelo menos uma parcela estiver paga
+        // (algumas seguradoras enviam apenas uma parcela no documento)
+        if (formaPagamento.includes("ficha") && status === "pago") {
+          return true;
+        }
+      }
+      
+      // Se não podemos determinar pelos dados disponíveis, assumimos que não está quitado
+      return false;
+    } catch (error) {
+      console.error("Erro ao verificar status de quitação:", error);
+      return false;
+    }
+  };
+  
+  // Função para verificar se o documento possui sinistros
+  const temSinistros = async (docId: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from("ocr_processamento")
+        .select("sinistros")
+        .eq("id", docId)
+        .single();
+        
+      if (error) return false;
+      
+      return data?.sinistros && Array.isArray(data.sinistros) && data.sinistros.length > 0;
+    } catch (error) {
+      console.error("Erro ao verificar sinistros:", error);
+      return false;
+    }
+  };
+  
+  // Melhorar a função para carregar o status de quitação de várias propostas de uma vez
+  const carregarStatusQuitacao = async (propostas: DocumentoProcessado[]) => {
+    // Limitar a 10 documentos por vez para evitar sobrecarga
+    const lote = propostas.slice(0, 10);
+    
+    // Processar em paralelo
+    const resultados = await Promise.all(
+      lote.map(async (proposta) => {
+        try {
+          const quitado = await isSeguroQuitado(proposta);
+          return { id: proposta.id, quitado };
+        } catch (erro) {
+          console.error(`Erro ao verificar quitação do documento ${proposta.id}:`, erro);
+          return { id: proposta.id, quitado: false };
+        }
+      })
+    );
+    
+    // Atualizar o estado com todos os resultados de uma vez
+    setStatusQuitacao(prev => {
+      const novoEstado = { ...prev };
+      resultados.forEach(({ id, quitado }) => {
+        novoEstado[id] = quitado;
+      });
+      return novoEstado;
+    });
+  };
+  
+  // Função para verificar se o documento possui anexos no Google Drive
+  const temAnexos = async (docId: string): Promise<boolean> => {
+    try {
+      const { count, error } = await supabase
+        .from("documentos_anexos")
+        .select("id", { count: "exact", head: true })
+        .eq("documento_id", docId);
+        
+      if (error) {
+        console.error("Erro ao verificar anexos:", error);
+        return false;
+      }
+      
+      return count !== null && count > 0;
+    } catch (error) {
+      console.error("Erro ao verificar anexos:", error);
+      return false;
+    }
+  };
+  
+  // Função para obter o link compartilhado do documento
+  const obterLinkDocumento = async (docId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from("documentos_anexos")
+        .select("drive_link, nome_arquivo")
+        .eq("documento_id", docId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+        
+      if (error) {
+        console.error("Erro ao buscar documento anexo:", error);
+        return null;
+      }
+      
+      if (!data || data.length === 0) {
+        console.log("Nenhum anexo encontrado para o documento:", docId);
+        return null;
+      }
+      
+      const anexo = data[0];
+      if (!anexo.drive_link) {
+        console.log("Anexo encontrado, mas sem link do Drive:", anexo);
+        return null;
+      }
+      
+      console.log(`Link encontrado para o documento: ${anexo.nome_arquivo}`);
+      return anexo.drive_link;
+    } catch (error) {
+      console.error("Erro ao obter link do documento:", error);
+      return null;
+    }
+  };
+  
+  // Função para copiar o link para a área de transferência
+  const copiarLinkParaClipboard = async (docId: string) => {
+    try {
+      const link = await obterLinkDocumento(docId);
+      
+      if (!link) {
+        toast.error("Link não disponível", {
+          description: "Este documento não possui um link compartilhado do Google Drive"
+        });
+        return;
+      }
+      
+      await navigator.clipboard.writeText(link);
+      toast.success("Link do documento copiado!", {
+        description: "O link foi copiado para a área de transferência"
+      });
+    } catch (error) {
+      console.error("Erro ao copiar link:", error);
+      toast.error("Erro ao copiar o link");
+    }
+  };
+
+  // Substituir o método carregarInfoSinistros
+  const carregarInfoSinistros = async (docs: DocumentoProcessado[]) => {
+    // Filtrar apenas documentos do tipo apólice ou endosso - limite máximo de 20 para evitar sobrecarga
+    const docsParaVerificar = docs
+      .filter(doc => doc.tipo_documento === "apolice" || doc.tipo_documento === "endosso")
+      .slice(0, 20);
+    
+    if (docsParaVerificar.length === 0) return;
+
+    try {
+      // Fazer uma única consulta para todos os documentos (batch query)
+      const ids = docsParaVerificar.map(doc => doc.id);
+      
+      // Consulta direta sem retry - podemos adicionar retry depois com tipagem correta
+      const { data, error } = await supabase
+        .from("ocr_processamento")
+        .select("id, sinistros")
+        .in("id", ids);
+      
+      if (error) {
+        console.error("Erro ao buscar sinistros em lote:", error);
+        return;
+      }
+      
+      // Atualizar o estado apenas uma vez com todos os resultados
+      if (data && data.length > 0) {
+        const novoEstado = { ...docsComSinistros };
+        
+        data.forEach((item: { id: string; sinistros: any[] }) => {
+          if (item.sinistros && Array.isArray(item.sinistros) && item.sinistros.length > 0) {
+            novoEstado[item.id] = true;
+          } else {
+            novoEstado[item.id] = false;
+          }
+        });
+        
+        setDocsComSinistros(novoEstado);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar informações de sinistros:", error);
+    }
+  };
+  
+  // Substituir o método carregarInfoAnexos
+  const carregarInfoAnexos = async (docs: DocumentoProcessado[]) => {
+    // Limitar a 20 documentos para evitar sobrecarga
+    const docsParaVerificar = docs.slice(0, 20);
+    if (docsParaVerificar.length === 0) return;
+    
+    try {
+      // Fazer uma única consulta para todos os documentos (batch query)
+      const ids = docsParaVerificar.map(doc => doc.id);
+      
+      // Consulta direta sem retry - podemos adicionar retry depois com tipagem correta
+      const { data, error } = await supabase
+        .from("documentos_anexos")
+        .select("documento_id")
+        .in("documento_id", ids);
+      
+      if (error) {
+        // Fallback para abordagem alternativa
+        const resultado: { [id: string]: boolean } = {};
+        
+        // Realizar consultas individuais com Promise.all
+        const promessas = ids.map(async id => {
+          try {
+            const { count, error: erroContagem } = await supabase
+              .from("documentos_anexos")
+              .select("id", { count: "exact", head: true })
+              .eq("documento_id", id);
+              
+            resultado[id] = count !== null && count > 0;
+          } catch (err) {
+            console.error(`Erro ao verificar anexos para documento ${id}:`, err);
+            resultado[id] = false;
+          }
+        });
+        
+        // Aguardar todas as promessas
+        await Promise.all(promessas);
+        setDocsComAnexos(prev => ({ ...prev, ...resultado }));
+        return;
+      }
+      
+      // Processar resultado da consulta em lote
+      if (data && data.length > 0) {
+        const novoEstado = { ...docsComAnexos };
+        
+        // Inicializar todos como false
+        ids.forEach(id => {
+          novoEstado[id] = false;
+        });
+        
+        // Agrupar por documento_id para contar quantos anexos cada documento tem
+        const docsComAnexo = new Set(data.map(item => item.documento_id));
+        
+        // Marcar os que têm anexos como true
+        docsComAnexo.forEach(id => {
+          novoEstado[id] = true;
+        });
+        
+        setDocsComAnexos(novoEstado);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar informações de anexos:", error);
+    }
+  };
 
   // Atualizar a aba ativa se o parâmetro da URL mudar
   useEffect(() => {
     if (tabParam && tab !== tabParam) setTab(tabParam);
   }, [tabParam]);
 
+  // Modificar o useEffect para carregamento lazy de metadados
+  useEffect(() => {
+    if (propostas.length > 0) {
+      // Usar requestIdleCallback para carregar metadados quando o navegador estiver ocioso
+      if ('requestIdleCallback' in window) {
+        // @ts-ignore - TypeScript pode não reconhecer requestIdleCallback
+        window.requestIdleCallback(() => {
+          carregarInfoSinistros(propostas);
+        }, { timeout: 2000 });
+        
+        // @ts-ignore
+        window.requestIdleCallback(() => {
+          carregarInfoAnexos(propostas);
+        }, { timeout: 3000 });
+      } else {
+        // Fallback para navegadores que não suportam requestIdleCallback
+        setTimeout(() => carregarInfoSinistros(propostas), 1000);
+        setTimeout(() => carregarInfoAnexos(propostas), 2000);
+      }
+    }
+  }, [propostas]);
+
+  // Atualizar o useEffect que chama a função de carregamento de status
+  useEffect(() => {
+    // Processamos apenas documentos que não tiveram seu status carregado ainda
+    const propostasParaVerificar = propostasFiltradas.filter(
+      proposta => statusQuitacao[proposta.id] === undefined
+    );
+    
+    if (propostasParaVerificar.length > 0) {
+      carregarStatusQuitacao(propostasParaVerificar);
+    }
+  }, [propostasFiltradas]);
+
+  // Modificar a função fetchPropostas para usar removerDuplicatas
   const fetchPropostas = async () => {
     try {
       setIsLoading(true)
@@ -196,6 +567,7 @@ export default function PropostasPage() {
 
       console.log("Propostas encontradas:", data?.length || 0)
       const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+      
       setPropostas(propostasNormalizadas)
       setPropostasFiltradas(propostasNormalizadas)
     } catch (error) {
@@ -396,7 +768,7 @@ export default function PropostasPage() {
                 
                 if (ultimaParcelaPaga) {
                   // Encontrar a próxima parcela após a última paga
-                  proximaParcela = parcelas.find(p => p.numero_parcela > ultimaParcelaPaga.numero_parcela) || null;
+                  proximaParcela = parcelas.find(p => p.numero_parcela > ultimaParcelaPaga.numero_parcela) || parcelas[0];
                 } else {
                   // Se nenhuma parcela foi paga, mostrar a primeira
                   proximaParcela = parcelas[0];
@@ -588,7 +960,9 @@ export default function PropostasPage() {
     return doc.proposta.numero || doc.id.substring(0, 8);
   };
 
-  const renderPropostaCard = (proposta: DocumentoProcessado) => {
+  // Corrigir o renderPropostaCard - remover o memo e usar useCallback
+  // Memoizar o renderPropostaCard para evitar re-renderizações desnecessárias
+  const renderPropostaCard = useCallback((proposta: DocumentoProcessado) => {
     // Determina a classe de hover baseada no tipo de documento
     const getTipoHoverClass = () => {
       switch (proposta.tipo_documento) {
@@ -629,80 +1003,80 @@ export default function PropostasPage() {
       });
     };
 
-    // Função para verificar se o seguro está totalmente quitado
-    const isSeguroQuitado = (proposta: DocumentoProcessado): boolean => {
-      // Verificar se o método de pagamento é boleto ou débito em conta
-      const formaPagamento = proposta.parcelas?.formaPagamento?.toLowerCase() || "";
-      const isBoletoOuDebito = 
-        formaPagamento.includes("boleto") || 
-        formaPagamento.includes("carnê") || 
-        formaPagamento.includes("carne") || 
-        formaPagamento.includes("débito") || 
-        formaPagamento.includes("debito");
-      
-      if (!isBoletoOuDebito) return false;
-      
-      // Extrair número total de parcelas contratadas
-      let totalParcelas = 1; // Padrão é 1
-      if (proposta.parcelas?.formaPagamento) {
-        // Tentar extrair o número de parcelas da string (ex: "6 x")
-        const match = proposta.parcelas.formaPagamento.match(/(\d+)\s*x/i);
-        if (match && match[1]) {
-          totalParcelas = parseInt(match[1]);
-        }
-      }
-      
-      // Se não temos informação sobre a próxima parcela
-      if (!proposta.parcelas?.proximaParcela) {
-        // Sem parcelas, consideramos quitado apenas para pagamentos à vista
-        return totalParcelas <= 1;
-      }
-      
-      // Se a próxima parcela tem status "pendente" ou similar, seguro não está quitado
-      if (proposta.parcelas.proximaParcela.status !== "pago") {
-        return false;
-      }
-      
-      // Verificar o número da parcela atual
-      const numeroParcela = proposta.parcelas.proximaParcela.numero;
-      
-      // Para propostas, só considerar quitado se for pagamento à vista e a parcela estiver paga
-      if (proposta.tipo_documento === "proposta") {
-        // Verificar se é pagamento à vista
-        return totalParcelas === 1 && proposta.parcelas.proximaParcela.status === "pago";
-      }
-      
-      // Casos específicos para determinar se está quitado (para apólices, endossos, etc):
-      
-      // Caso 1: Se a parcela atual é a última e está paga
-      if (numeroParcela === totalParcelas && proposta.parcelas.proximaParcela.status === "pago") {
-        return true;
-      }
-      
-      // Caso 2: Se for uma parcela única (à vista)
-      if (totalParcelas === 1 && proposta.parcelas.proximaParcela.status === "pago") {
-        return true;
-      }
-      
-      // Em todos os outros casos, não consideramos quitado
-      return false;
-    };
-
     return (
       <Card
-        key={proposta.id}
-        className={`overflow-visible transition-all duration-300 bg-black dark:bg-black ${isSeguroQuitado(proposta) ? 'border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'border border-gray-800'} h-full flex flex-col justify-between group hover:-translate-y-1 hover:z-[5] card-hover-effect ${getTipoHoverClass()}`}
+        className={`overflow-visible transition-all duration-300 bg-black dark:bg-black ${statusQuitacao[proposta.id] ? 'border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'border border-gray-800'} h-full flex flex-col justify-between group hover:-translate-y-1 hover:z-[5] card-hover-effect ${getTipoHoverClass()}`}
       >
         <CardHeader className="pb-1 relative z-10">
-          {isSeguroQuitado(proposta) && (
-            <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 shadow-md z-20">
+          <div className="absolute -top-2 right-2 flex flex-row-reverse gap-2 z-20">
+            {statusQuitacao[proposta.id] && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="bg-green-500 text-white rounded-full p-1 shadow-md hover:bg-green-400 transition-colors">
               <CheckCircle2 className="h-4 w-4" />
             </div>
-          )}
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Apólice Quitada
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {docsComSinistros[proposta.id] && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link 
+                      href={`/documentos/${proposta.id}?tab=sinistros`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-400 cursor-pointer transition-colors flex items-center justify-center"
+                    >
+                      <AlertCircle className="h-4 w-4" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Ver detalhes do sinistro
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {docsComAnexos[proposta.id] && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div 
+                      className="bg-blue-500 text-white rounded-full p-1 shadow-md hover:bg-blue-400 cursor-pointer transition-colors"
+                      onClick={async (e) => {
+                        try {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          await copiarLinkParaClipboard(proposta.id);
+                        } catch (erro) {
+                          console.error("Erro ao processar clique no link:", erro);
+                          toast.error("Não foi possível copiar o link", {
+                            description: "Tente novamente mais tarde"
+                          });
+                        }
+                      }}
+                    >
+                      <Link2 className="h-4 w-4" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Copiar link do documento
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-lg font-mono flex items-center">
+              <CardTitle className="text-lg font-mono flex items-center gap-2">
                 {getNumeroDocumento(proposta)}
+                {statusQuitacao[proposta.id] && (
+                  <div className="w-2 h-2 rounded-full bg-green-500" title="Apólice Quitada"></div>
+                )}
               </CardTitle>
             </div>
             <TooltipProvider>
@@ -743,48 +1117,72 @@ export default function PropostasPage() {
                 style={{ textDecoration: 'none' }}
               >
                 <motion.div
-                  className="relative overflow-hidden p-1.5 rounded-md bg-gradient-to-br from-transparent to-transparent hover:from-primary/5 hover:to-primary/10 transition-colors"
+                  className="relative overflow-hidden p-1.5 rounded-md"
                   initial={{ opacity: 0, y: 5, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
-                  whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
                 >
                   {proposta.parcelas?.formaPagamento === "Cartão de Crédito" ? (
                     <p className="text-muted-foreground">
                       <span className="font-bold text-white">Pagamento:</span> Cartão de Crédito
                     </p>
-                  ) : isSeguroQuitado(proposta) ? (
+                  ) : statusQuitacao[proposta.id] ? (
                     <>
                       <p className="text-muted-foreground">
-                        <span className="font-bold text-white">Prêmio Pago:</span> {formatarMoeda(proposta.parcelas?.proximaParcela?.valor * (proposta.parcelas?.formaPagamento?.includes(" x") ? 
-                          parseInt(proposta.parcelas?.formaPagamento?.split(" x")[0]) : 1) || 0)}
+                        <span className="font-bold text-white">Prêmio Pago:</span> {formatarMoeda(proposta.parcelas?.proximaParcela?.valor * (proposta.parcelas?.totalParcelas || (proposta.parcelas?.formaPagamento?.includes(" x") ? 
+                          parseInt(proposta.parcelas?.formaPagamento?.split(" x")[0]) : 1)) || 0)}
                       </p>
-                      <p className="text-muted-foreground flex justify-between">
+                      <div className="text-muted-foreground flex justify-between items-center">
                         <span>
-                          <span className="font-bold text-white">Parcelas:</span> {proposta.parcelas?.formaPagamento?.includes(" x") ? 
-                            proposta.parcelas?.formaPagamento?.split(" x")[0] : 1}
+                          <span className="font-bold text-white">Parcelas:</span> {proposta.parcelas?.totalParcelas || (proposta.parcelas?.formaPagamento?.includes(" x") ? 
+                            proposta.parcelas?.formaPagamento?.split(" x")[0] : 1)}
                         </span>
-                        <span className="text-green-500">Quitado</span>
-                      </p>
+                        <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500 text-xs py-0 px-2">
+                          Quitado
+                        </Badge>
+                      </div>
                     </>
                   ) : proposta.tipo_documento === "proposta" ? (
                     <>
                       <p className="text-muted-foreground">
                           <span className="font-bold text-white">Parcela de Entrada:</span> {formatarData(proposta.parcelas?.proximaParcela?.data_vencimento || '')}
                       </p>
-                      <p className="text-muted-foreground flex justify-between">
+                      <div className="text-muted-foreground flex justify-between items-center">
                           <span>
                             <span className="font-bold text-white">Valor:</span> {formatarMoeda(proposta.parcelas?.proximaParcela?.valor || 0)}
                           </span>
-                          <span className={`
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Atrasado' ? 'text-orange-500' : ''}
-                            ${proposta.parcelas?.proximaParcela?.status === 'pago' ? 'text-green-500' : ''}
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'À vencer' ? 'text-blue-500' : ''}
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Vence Hoje' ? 'text-yellow-500' : ''}
-                          `}>
-                          {proposta.tipo_documento.includes("cancelado") ? "Cancelado" : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '')}
-                        </span>
-                      </p>
+                          {(() => {
+                            const status = proposta.tipo_documento.includes("cancelado") 
+                              ? "Cancelado" 
+                              : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '');
+                            
+                            if (status === 'Atrasado') {
+                              return <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            } else if (status === 'Pago') {
+                              return <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            } else if (status === 'À vencer') {
+                              return <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            } else if (status === 'Vence Hoje') {
+                              return <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            } else if (status === 'Cancelado') {
+                              return <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            } else {
+                              return <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500 text-xs py-0 px-2">
+                                {status}
+                              </Badge>;
+                            }
+                          })()}
+                      </div>
                     </>
                   ) : (
                     <>
@@ -854,19 +1252,42 @@ export default function PropostasPage() {
                           })()}
                         </span> {formatarData(proposta.parcelas?.proximaParcela?.data_vencimento || '')}
                       </p>
-                      <p className="text-muted-foreground flex justify-between">
+                    <div className="text-muted-foreground flex justify-between items-center">
                           <span>
                             <span className="font-bold text-white">Valor:</span> {formatarMoeda(proposta.parcelas?.proximaParcela?.valor || 0)}
                           </span>
-                          <span className={`
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Atrasado' ? 'text-orange-500' : ''}
-                            ${proposta.parcelas?.proximaParcela?.status === 'pago' ? 'text-green-500' : ''}
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'À vencer' ? 'text-blue-500' : ''}
-                            ${getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '') === 'Vence Hoje' ? 'text-yellow-500' : ''}
-                          `}>
-                          {proposta.tipo_documento.includes("cancelado") ? "Cancelado" : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '')}
-                        </span>
-                      </p>
+                        {(() => {
+                          const status = proposta.tipo_documento.includes("cancelado") 
+                            ? "Cancelado" 
+                            : getStatusParcela(proposta.parcelas?.proximaParcela?.status || '', proposta.parcelas?.proximaParcela?.data_vencimento || '');
+                          
+                          if (status === 'Atrasado') {
+                            return <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          } else if (status === 'Pago') {
+                            return <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          } else if (status === 'À vencer') {
+                            return <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          } else if (status === 'Vence Hoje') {
+                            return <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          } else if (status === 'Cancelado') {
+                            return <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          } else {
+                            return <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500 text-xs py-0 px-2">
+                              {status}
+                            </Badge>;
+                          }
+                        })()}
+                    </div>
                     </>
                   )}
                 </motion.div>
@@ -929,7 +1350,7 @@ export default function PropostasPage() {
         </CardFooter>
       </Card>
     );
-  };
+  }, [statusQuitacao, docsComSinistros, docsComAnexos]); // Dependências da função
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -1164,23 +1585,81 @@ export default function PropostasPage() {
     setPropostasFiltradas(resultado);
   }, [filtrosAtivos, propostas, ordenacao]);
 
+  // Adicionar um useEffect para remover duplicatas das propostas filtradas
+  useEffect(() => {
+    // Usar um Set para encontrar IDs únicos
+    const propostasUnicas = [...propostasFiltradas].filter((proposta, index, self) => 
+      index === self.findIndex((p) => p.id === proposta.id)
+    );
+    
+    // Se encontrarmos duplicatas, atualizar o estado
+    if (propostasUnicas.length !== propostasFiltradas.length) {
+      console.warn(`Removidas ${propostasFiltradas.length - propostasUnicas.length} propostas duplicadas`);
+      setPropostasFiltradas(propostasUnicas);
+    }
+  }, [propostasFiltradas]);
+
   // Componente de filtros (adicionar no render)
   const FiltroPainel = () => (
-    <motion.div 
-      className={`mb-4 bg-black border border-gray-800 rounded-md ${filtroAberto ? 'mt-2' : 'mt-0'}`}
-      initial={false}
-      animate={{ height: filtroAberto ? 'auto' : 0, opacity: filtroAberto ? 1 : 0, marginBottom: filtroAberto ? 16 : 0 }}
-      transition={{ duration: 0.3 }}
-    >
+    <AnimatePresence>
       {filtroAberto && (
-        <div className="p-4">
+    <motion.div 
+          className="mb-4 bg-black border border-gray-800 rounded-md overflow-hidden"
+          initial={{ opacity: 0, height: 0, scale: 0.98, y: -10 }}
+          animate={{ 
+            opacity: 1, 
+            height: "auto", 
+            scale: 1, 
+            y: 0,
+            transition: {
+              height: { duration: 0.4, ease: [0.4, 0, 0.2, 1] },
+              opacity: { duration: 0.3, ease: "easeInOut" },
+              scale: { duration: 0.4, ease: [0.4, 0, 0.2, 1] },
+              y: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }
+            }
+          }}
+          exit={{ 
+            opacity: 0, 
+            height: 0, 
+            scale: 0.98, 
+            y: -10,
+            transition: {
+              height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+              opacity: { duration: 0.2, ease: "easeOut" },
+              scale: { duration: 0.3 },
+              y: { duration: 0.2 }
+            }
+          }}
+          layout
+        >
+          <motion.div 
+            className="p-4"
+            initial={{ opacity: 0 }}
+            animate={{ 
+              opacity: 1,
+              transition: { duration: 0.2, delay: 0.1 }
+            }}
+            exit={{ opacity: 0 }}
+          >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Filtro por seguradora */}
             <div>
               <h3 className="text-sm font-medium mb-2">Seguradoras</h3>
               <div className="space-y-1 max-h-48 overflow-y-auto pr-2 scrollbar-thin">
-                {seguradorasDisponiveis.map((seguradora) => (
-                  <div key={seguradora} className="flex items-center">
+                  {seguradorasDisponiveis.map((seguradora, index) => (
+                    <motion.div 
+                      key={seguradora} 
+                      className="flex items-center"
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ 
+                        opacity: 1, 
+                        x: 0,
+                        transition: { 
+                          duration: 0.2, 
+                          delay: 0.05 * index 
+                        }
+                      }}
+                    >
                     <Checkbox 
                       id={`seguradora-${seguradora}`}
                       checked={filtrosAtivos.seguradoras.includes(seguradora)}
@@ -1200,7 +1679,7 @@ export default function PropostasPage() {
                     >
                       {seguradora}
                     </label>
-                  </div>
+                    </motion.div>
                 ))}
               </div>
             </div>
@@ -1209,8 +1688,20 @@ export default function PropostasPage() {
             <div>
               <h3 className="text-sm font-medium mb-2">Forma de Pagamento</h3>
               <div className="space-y-1">
-                {formasPagamentoDisponiveis.map((forma) => (
-                  <div key={forma} className="flex items-center">
+                  {formasPagamentoDisponiveis.map((forma, index) => (
+                    <motion.div 
+                      key={forma} 
+                      className="flex items-center"
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ 
+                        opacity: 1, 
+                        x: 0,
+                        transition: { 
+                          duration: 0.2, 
+                          delay: 0.05 * index + 0.1
+                        }
+                      }}
+                    >
                     <Checkbox 
                       id={`pagamento-${forma}`}
                       checked={filtrosAtivos.formaPagamento.includes(forma)}
@@ -1230,7 +1721,7 @@ export default function PropostasPage() {
                     >
                       {forma}
                     </label>
-                  </div>
+                    </motion.div>
                 ))}
               </div>
             </div>
@@ -1239,8 +1730,20 @@ export default function PropostasPage() {
             <div>
               <h3 className="text-sm font-medium mb-2">Status da Parcela</h3>
               <div className="space-y-1">
-                {["Pago", "À vencer", "Vence Hoje", "Atrasado", "Cancelado"].map((status) => (
-                  <div key={status} className="flex items-center">
+                  {["Pago", "À vencer", "Vence Hoje", "Atrasado", "Cancelado"].map((status, index) => (
+                    <motion.div 
+                      key={status} 
+                      className="flex items-center"
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ 
+                        opacity: 1, 
+                        x: 0,
+                        transition: { 
+                          duration: 0.2, 
+                          delay: 0.05 * index + 0.2
+                        }
+                      }}
+                    >
                     <Checkbox 
                       id={`status-${status}`}
                       checked={filtrosAtivos.statusParcela.includes(status)}
@@ -1260,13 +1763,24 @@ export default function PropostasPage() {
                     >
                       {status}
                     </label>
-                  </div>
+                    </motion.div>
                 ))}
               </div>
             </div>
             
             {/* Filtro por vigência */}
-            <div className="md:col-span-2 lg:col-span-3">
+              <motion.div 
+                className="md:col-span-2 lg:col-span-3"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ 
+                  opacity: 1, 
+                  y: 0,
+                  transition: { 
+                    duration: 0.3, 
+                    delay: 0.3
+                  }
+                }}
+              >
               <h3 className="text-sm font-medium mb-2">Vigência</h3>
               <div className="flex flex-wrap gap-2">
                 {[
@@ -1274,9 +1788,20 @@ export default function PropostasPage() {
                   { meses: 3, label: "Próximos 3 meses" },
                   { meses: 6, label: "Próximos 6 meses" },
                   { meses: 12, label: "Próximo ano" }
-                ].map((opcao) => (
-                  <Button
+                  ].map((opcao, index) => (
+                    <motion.div
                     key={opcao.meses}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ 
+                        opacity: 1, 
+                        scale: 1,
+                        transition: { 
+                          duration: 0.2, 
+                          delay: 0.05 * index + 0.3
+                        }
+                      }}
+                    >
+                      <Button
                     variant={filtrosAtivos.mesesVigencia === opcao.meses ? "default" : "outline"}
                     size="sm"
                     onClick={() => {
@@ -1289,13 +1814,25 @@ export default function PropostasPage() {
                   >
                     {opcao.label}
                   </Button>
+                    </motion.div>
                 ))}
               </div>
-            </div>
+              </motion.div>
           </div>
           
           {/* Botões de ação dos filtros */}
-          <div className="flex justify-end mt-4 gap-2">
+            <motion.div 
+              className="flex justify-end mt-4 gap-2"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ 
+                opacity: 1, 
+                y: 0,
+                transition: { 
+                  duration: 0.3, 
+                  delay: 0.4
+                }
+              }}
+            >
             <Button 
               variant="ghost" 
               size="sm"
@@ -1317,11 +1854,149 @@ export default function PropostasPage() {
             >
               Aplicar filtros
             </Button>
-          </div>
-        </div>
-      )}
     </motion.div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
+
+  // Adicionar essa função para incrementar o número de itens visíveis
+  const loadMoreVisibleItems = useCallback(() => {
+    setVisibleCount(prev => Math.min(prev + BATCH_SIZE, propostasFiltradas.length));
+  }, [propostasFiltradas.length]);
+
+  // Modificar o useEffect do Intersection Observer para usar a função de carregar mais itens visíveis
+  useEffect(() => {
+    // Desconectar o observer anterior, se existir
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+    
+    // Só criar o observer se houver mais itens para mostrar
+    if (visibleCount < propostasFiltradas.length || hasMore) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            // Se estamos mostrando todos os itens filtrados atuais, buscar mais do servidor
+            if (visibleCount >= propostasFiltradas.length && hasMore && !isFetchingMore) {
+              loadMoreDocuments();
+            } else {
+              // Caso contrário, mostrar mais itens dos que já estão carregados
+              loadMoreVisibleItems();
+            }
+          }
+        },
+        { threshold: 0.1, rootMargin: '100px' } // Pré-carregar antes de chegar ao final
+      );
+      
+      // Salvar a referência para poder desconectar depois
+      observerRef.current = observer;
+      
+      // Se tiver um último card, observá-lo
+      if (lastCardRef.current) {
+        observer.observe(lastCardRef.current);
+      }
+      
+      return () => {
+        observer.disconnect();
+      };
+    }
+  }, [visibleCount, propostasFiltradas.length, hasMore, isFetchingMore, loadMoreVisibleItems]);
+
+  // Resetar o contador de itens visíveis quando a tab ou o termo de busca mudam
+  useEffect(() => {
+    setVisibleCount(BATCH_SIZE);
+  }, [tab, searchTerm]);
+
+  // Função para carregar mais documentos
+  const loadMoreDocuments = async () => {
+    if (isFetchingMore || !hasMore) return;
+    
+    try {
+      setIsFetchingMore(true);
+      
+      // Se estiver buscando por termo, não fazer lazy loading
+      if (searchTerm.trim() !== "") {
+        setIsFetchingMore(false);
+        return;
+      }
+      
+      // Aqui você pode implementar a lógica para buscar mais documentos
+      // Usando o último documento como cursor
+      const lastDocument = propostasFiltradas[propostasFiltradas.length - 1];
+      
+      if (!lastDocument) {
+        setHasMore(false);
+        setIsFetchingMore(false);
+        return;
+      }
+      
+      // Buscar próxima página
+      let query = supabase
+        .from("ocr_processamento")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .limit(10); // Carregar menos documentos por vez para melhor performance
+      
+      // Aplicar o filtro por tipo de documento se necessário
+      if (tab === "propostas") {
+        query = query.eq("tipo_documento", "proposta");
+      } else if (tab === "apolices") {
+        query = query.eq("tipo_documento", "apolice");
+      } else if (tab === "endossos") {
+        query = query.eq("tipo_documento", "endosso");
+      } else if (tab === "cancelados") {
+        query = query.eq("tipo_documento", "cancelado");
+      }
+      
+      // Usar o timestamp do último documento como cursor
+      if (lastDocument.criado_em) {
+        query = query.lt("criado_em", lastDocument.criado_em);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error("Erro ao carregar mais documentos:", error);
+        setIsFetchingMore(false);
+        return;
+      }
+      
+      if (!data || data.length === 0) {
+        // Não há mais documentos para carregar
+        setHasMore(false);
+        setIsFetchingMore(false);
+        return;
+      }
+      
+      // Normalizar e adicionar os novos documentos
+      const novosDocumentos = data.map((proposta: any) => normalizarProposta(proposta));
+      
+      // Filtrar documentos que já existem para evitar duplicatas
+      const idsExistentes = new Set(propostasFiltradas.map(p => p.id));
+      const documentosUnicos = novosDocumentos.filter(doc => !idsExistentes.has(doc.id));
+      
+      if (documentosUnicos.length === 0) {
+        console.log("Todos os documentos carregados já existem no estado atual");
+        setHasMore(false);
+        setIsFetchingMore(false);
+        return;
+      }
+      
+      // Atualizar os estados com os novos documentos
+      setPropostas(prev => [...prev, ...documentosUnicos]);
+      
+      // Dar um pequeno delay para evitar sobrecarga
+      setTimeout(() => {
+        setIsFetchingMore(false);
+      }, 500);
+      
+    } catch (error) {
+      console.error("Erro ao carregar mais documentos:", error);
+      setIsFetchingMore(false);
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -1369,9 +2044,14 @@ export default function PropostasPage() {
                     variant="outline" 
                     size="sm" 
                     onClick={() => setFiltroAberto(!filtroAberto)}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 relative overflow-hidden group"
+                  >
+                    <motion.div
+                      animate={{ rotate: filtroAberto ? 180 : 0 }}
+                      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                   >
                     <Filter className="h-4 w-4" />
+                    </motion.div>
                     <span>Filtros</span>
                     {(filtrosAtivos.seguradoras.length > 0 || 
                       filtrosAtivos.statusParcela.length > 0 || 
@@ -1384,44 +2064,125 @@ export default function PropostasPage() {
                          (filtrosAtivos.mesesVigencia !== null ? 1 : 0)}
                       </Badge>
                     )}
+                    
+                    {filtroAberto && (
+                      <motion.div 
+                        className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-md z-0"
+                        initial={{ opacity: 0, scale: 0 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0 }}
+                        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                      />
+                    )}
                   </Button>
                   
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex items-center gap-2 relative overflow-hidden"
+                      >
+                        <motion.div
+                          animate={{ rotate: ordenacao.includes("dist") ? 180 : 0 }}
+                          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                        >
                         <SortAsc className="h-4 w-4" />
+                        </motion.div>
                         <span>Ordenar</span>
+                        
+                        {ordenacao !== "recente" && (
+                          <motion.div 
+                            className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-md z-0"
+                            initial={{ opacity: 0, scale: 0 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                          />
+                        )}
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 p-2">
-                      <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
+                    <DropdownMenuContent 
+                      align="end" 
+                      className="w-64 p-2 border border-gray-800 bg-black"
+                      sideOffset={5}
+                      asChild
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                      >
+                        <DropdownMenuLabel className="text-sm font-medium py-2">Ordenar por</DropdownMenuLabel>
+                        <DropdownMenuSeparator className="bg-gray-800" />
                       <DropdownMenuRadioGroup value={ordenacao}>
-                        <DropdownMenuRadioItem value="recente" 
+                          <motion.div
+                            whileHover={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                            className="rounded-md overflow-hidden"
+                          >
+                            <DropdownMenuRadioItem 
+                              value="recente" 
                           onClick={() => setOrdenacao(ordenacao === "recente" ? "antiga" : "recente")}
-                          className="flex items-center justify-between cursor-pointer"
+                              className="flex items-center justify-between cursor-pointer rounded-md my-1 py-2 pl-2 pr-3 focus:bg-primary/10 data-[highlighted]:bg-primary/10"
                         >
-                          <span>Data de Cadastro</span>
-                          {ordenacao === "recente" ? <ChevronDown className="h-4 w-4 ml-2" /> : 
-                           ordenacao === "antiga" ? <ChevronUp className="h-4 w-4 ml-2" /> : null}
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${ordenacao === "recente" || ordenacao === "antiga" ? "bg-primary text-black" : "bg-gray-800"}`}>
+                                  <CalendarClock className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="font-medium">Data de Cadastro</span>
+                              </div>
+                              <div className="flex items-center">
+                                {ordenacao === "recente" && <ChevronDown className="h-4 w-4 text-primary ml-2" />}
+                                {ordenacao === "antiga" && <ChevronUp className="h-4 w-4 text-primary ml-2" />}
+                              </div>
                         </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="vigencia_prox" 
+                          </motion.div>
+                          
+                          <motion.div
+                            whileHover={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                            className="rounded-md overflow-hidden"
+                          >
+                            <DropdownMenuRadioItem 
+                              value="vigencia_prox" 
                           onClick={() => setOrdenacao(ordenacao === "vigencia_prox" ? "vigencia_dist" : "vigencia_prox")}
-                          className="flex items-center justify-between cursor-pointer"
+                              className="flex items-center justify-between cursor-pointer rounded-md my-1 py-2 pl-2 pr-3 focus:bg-primary/10 data-[highlighted]:bg-primary/10"
                         >
-                          <span>Vigência</span>
-                          {ordenacao === "vigencia_prox" ? <ChevronUp className="h-4 w-4 ml-2" /> : 
-                           ordenacao === "vigencia_dist" ? <ChevronDown className="h-4 w-4 ml-2" /> : null}
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${ordenacao === "vigencia_prox" || ordenacao === "vigencia_dist" ? "bg-primary text-black" : "bg-gray-800"}`}>
+                                  <CalendarClock className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="font-medium">Vigência</span>
+                              </div>
+                              <div className="flex items-center">
+                                {ordenacao === "vigencia_prox" && <ChevronUp className="h-4 w-4 text-primary ml-2" />}
+                                {ordenacao === "vigencia_dist" && <ChevronDown className="h-4 w-4 text-primary ml-2" />}
+                              </div>
                         </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="vencimento_prox" 
+                          </motion.div>
+                          
+                          <motion.div
+                            whileHover={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                            className="rounded-md overflow-hidden"
+                          >
+                            <DropdownMenuRadioItem 
+                              value="vencimento_prox" 
                           onClick={() => setOrdenacao(ordenacao === "vencimento_prox" ? "vencimento_dist" : "vencimento_prox")}
-                          className="flex items-center justify-between cursor-pointer"
+                              className="flex items-center justify-between cursor-pointer rounded-md my-1 py-2 pl-2 pr-3 focus:bg-primary/10 data-[highlighted]:bg-primary/10"
                         >
-                          <span>Data de Vencimento</span>
-                          {ordenacao === "vencimento_prox" ? <ChevronUp className="h-4 w-4 ml-2" /> : 
-                           ordenacao === "vencimento_dist" ? <ChevronDown className="h-4 w-4 ml-2" /> : null}
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${ordenacao === "vencimento_prox" || ordenacao === "vencimento_dist" ? "bg-primary text-black" : "bg-gray-800"}`}>
+                                  <CalendarClock className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="font-medium">Data de Vencimento</span>
+                              </div>
+                              <div className="flex items-center">
+                                {ordenacao === "vencimento_prox" && <ChevronUp className="h-4 w-4 text-primary ml-2" />}
+                                {ordenacao === "vencimento_dist" && <ChevronDown className="h-4 w-4 text-primary ml-2" />}
+                              </div>
                         </DropdownMenuRadioItem>
+                          </motion.div>
                       </DropdownMenuRadioGroup>
+                      </motion.div>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1432,13 +2193,15 @@ export default function PropostasPage() {
               
             </div>
             <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-              <TabsList>
+              <div className="overflow-x-auto scrollbar-hide">
+                <TabsList className="flex-nowrap min-w-max">
                 <TabsTrigger value="todas">Todas</TabsTrigger>
                 <TabsTrigger value="propostas">Propostas</TabsTrigger>
                 <TabsTrigger value="apolices">Apólices</TabsTrigger>
                 <TabsTrigger value="endossos">Endossos</TabsTrigger>
                 <TabsTrigger value="cancelados">Cancelados</TabsTrigger>
               </TabsList>
+              </div>
             </Tabs>
           </motion.div>
 
@@ -1490,26 +2253,64 @@ export default function PropostasPage() {
                         transition={{ duration: 0.3 }}
                         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 cards-container"
                       >
-                        {propostasFiltradas.map((proposta, idx) => (
+                        {/* Mostrar apenas o número de itens definidos em visibleCount */}
+                        {propostasFiltradas.slice(0, visibleCount).map((proposta, idx) => (
                           <motion.div
-                            key={proposta.id}
+                            key={`${proposta.id}-${idx}`}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 20 }}
-                            transition={{ duration: 0.3, delay: idx * 0.05 }}
+                            transition={{ 
+                              duration: 0.3, 
+                              delay: idx % BATCH_SIZE * 0.05 // Aplicar delay apenas dentro do batch atual
+                            }}
                             className="card-container relative z-[1]"
+                            ref={idx === visibleCount - 1 ? lastCardRef : null} // Referência para o último card visível
                             onMouseMove={(e) => {
+                              // Só aplicar efeito hover se o dispositivo suportar hover (evitar em mobile)
+                              if (window.matchMedia('(hover: hover)').matches) {
                               const card = e.currentTarget;
                               const rect = card.getBoundingClientRect();
                               const x = e.clientX - rect.left;
                               const y = e.clientY - rect.top;
                               card.style.setProperty("--mouse-x", `${x}px`);
                               card.style.setProperty("--mouse-y", `${y}px`);
+                              }
                             }}
                           >
                             {renderPropostaCard(proposta as DocumentoProcessado)}
                           </motion.div>
                         ))}
+                        
+                        {/* Esqueletos de carregamento para lazy loading */}
+                        {((visibleCount < propostasFiltradas.length) || isFetchingMore) && (
+                          <>
+                            {[...Array(3)].map((_, i) => (
+                              <motion.div
+                                key={`skeleton-${i}`}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="card-container"
+                              >
+                                <Card className="bg-black dark:bg-black border border-gray-800 h-full">
+                                  <CardHeader className="pb-2">
+                                    <div className="h-5 bg-gray-800/50 rounded w-1/2 mb-2 animate-pulse"></div>
+                                    <div className="h-4 bg-gray-800/50 rounded w-3/4 animate-pulse"></div>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="h-4 bg-gray-800/50 rounded w-full mb-2 animate-pulse"></div>
+                                    <div className="h-4 bg-gray-800/50 rounded w-2/3 mb-2 animate-pulse"></div>
+                                    <div className="h-4 bg-gray-800/50 rounded w-3/4 mb-2 animate-pulse"></div>
+                                    <div className="h-4 bg-gray-800/50 rounded w-1/2 animate-pulse"></div>
+                                  </CardContent>
+                                  <CardFooter>
+                                    <div className="h-9 bg-gray-800/50 rounded w-full animate-pulse"></div>
+                                  </CardFooter>
+                                </Card>
+                              </motion.div>
+                            ))}
+                          </>
+                        )}
                       </motion.div>
                     ) : (
                       <motion.div

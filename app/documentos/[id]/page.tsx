@@ -33,8 +33,11 @@ import MotionDiv from "@/components/MotionDiv"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
 import { PainelPagamentos } from "@/components/gestao-pagamentos/PainelPagamentos"
 import { UploadDocumentos } from "@/app/components/UploadDocumentos"
+import { PainelSinistros } from "@/components/gestao-sinistros/PainelSinistros"
+import { HistoricoDocumentos } from "@/app/components/HistoricoDocumentos"
 
 type SectionKey = keyof DadosProposta
 type NestedField = keyof DadosProposta[SectionKey]
@@ -291,14 +294,25 @@ export default function PropostaDetalhesPage() {
                 ease: [0.4, 0, 0.2, 1]
               }}
             >
-          <h1 className="text-3xl font-bold tracking-tight">
-            {(proposta as any)?.tipo_documento === 'apolice'
-              ? `Apólice ${(editedProposta as any)?.proposta?.apolice || (editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
-              : (proposta as any)?.tipo_documento === 'endosso'
-                ? `Endosso ${(editedProposta as any)?.proposta?.endosso || (editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
-                : `Proposta ${(editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
-            }
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">
+              {(proposta as any)?.tipo_documento === 'apolice'
+                ? `Apólice ${(editedProposta as any)?.proposta?.apolice || (editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
+                : (proposta as any)?.tipo_documento === 'endosso'
+                  ? `Endosso ${(editedProposta as any)?.proposta?.endosso || (editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
+                  : `Proposta ${(editedProposta as any)?.proposta?.numero || '#' + ((proposta as any)?.id?.substring(0, 8) || '')}`
+              }
+            </h1>
+            {proposta && (proposta as any).sinistros && Array.isArray((proposta as any).sinistros) && 
+              (proposta as any).sinistros.length > 0 && (
+              <Badge 
+                className="bg-red-500/20 text-red-500 border-red-500/50 hover:bg-red-500/30 cursor-pointer transition-colors text-sm px-3 py-1"
+                onClick={() => setTabAtiva("sinistros")}
+              >
+                Consta Sinistro
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
             {(editedProposta as any)?.proposta?.cia_seguradora || "Seguradora não identificada"}
           </p>
@@ -477,13 +491,17 @@ export default function PropostaDetalhesPage() {
               <CreditCard className="h-4 w-4 mr-2" />
               Financeiro
             </TabsTrigger>
-            <TabsTrigger value="corretor">
-              <Building className="h-4 w-4 mr-2" />
-              Corretor
+            <TabsTrigger value="sinistros">
+              <Shield className="h-4 w-4 mr-2" />
+              Sinistros
             </TabsTrigger>
             <TabsTrigger value="anexos">
               <Upload className="h-4 w-4 mr-2" />
               Anexos
+            </TabsTrigger>
+            <TabsTrigger value="corretor">
+              <Building className="h-4 w-4 mr-2" />
+              Corretor
             </TabsTrigger>
           </TabsList>
         </div>
@@ -1105,7 +1123,7 @@ export default function PropostaDetalhesPage() {
                           </CardHeader>
                           <CardContent className="space-y-4">
                             <div className="grid gap-3">
-                              <Label htmlFor="preco-total">Preço Total</Label>
+                              <Label htmlFor="preco-total">Prêmio Total</Label>
                               <Input
                                 id="preco-total"
                                 value={(editedProposta as any)?.valores?.preco_total || ""}
@@ -1114,7 +1132,7 @@ export default function PropostaDetalhesPage() {
                               />
                             </div>
                             <div className="grid gap-3">
-                              <Label htmlFor="preco-liquido">Preço Líquido</Label>
+                              <Label htmlFor="preco-liquido">Prêmio Líquido</Label>
                               <Input
                                 id="preco-liquido"
                                 value={(editedProposta as any)?.valores?.preco_liquido || ""}
@@ -1220,6 +1238,31 @@ export default function PropostaDetalhesPage() {
               </AnimatePresence>
         </TabsContent>
 
+        <TabsContent value="sinistros">
+          <AnimatePresence mode="wait">
+            {tabAtiva === "sinistros" && (
+              <MotionDiv
+                key="sinistros"
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+              >
+                <div className="grid grid-cols-1 gap-8 max-w-xl mx-0">
+                  {proposta && (
+                    <PainelSinistros
+                      documentoId={proposta.id}
+                      tipoDocumento={(proposta as any)?.tipo_documento || "proposta"}
+                      vigenciaInicio={(editedProposta as any)?.proposta?.vigencia_inicio}
+                      vigenciaFim={(editedProposta as any)?.proposta?.vigencia_fim}
+                    />
+                  )}
+                </div>
+              </MotionDiv>
+            )}
+          </AnimatePresence>
+        </TabsContent>
+
         <TabsContent value="anexos">
           <AnimatePresence mode="wait">
             {tabAtiva === "anexos" && (
@@ -1230,11 +1273,29 @@ export default function PropostaDetalhesPage() {
                 exit={{ opacity: 0, scale: 0.95, y: -20 }}
                 transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
               >
-                <div className="grid grid-cols-1 gap-6">
-                  <UploadDocumentos 
-                    documentoId={proposta.id} 
-                    nomeSegurado={(editedProposta as any)?.segurado?.nome || ""}
-                  />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Card de Upload */}
+                  <MotionDiv
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: 0.1, ease: [0.4, 0, 0.2, 1] }}
+                  >
+                    <UploadDocumentos 
+                      documentoId={proposta.id} 
+                      nomeSegurado={(editedProposta as any)?.segurado?.nome || ""}
+                    />
+                  </MotionDiv>
+                  
+                  {/* Card de Histórico */}
+                  <MotionDiv
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                  >
+                    <HistoricoDocumentos 
+                      documentoId={proposta.id}
+                    />
+                  </MotionDiv>
                 </div>
               </MotionDiv>
             )}

@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format, parse } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, ChevronDown, ChevronRight, PlusCircle, Save, Trash2, RefreshCw } from "lucide-react"
+import { CalendarIcon, ChevronDown, ChevronRight, PlusCircle, Save, Trash2, RefreshCw, Check, X, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { motion, AnimatePresence } from "framer-motion"
@@ -546,6 +546,10 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
   const [abaAtual, setAbaAtual] = useState('financeiro')
   const [mostrarAlertaRecriacao, setMostrarAlertaRecriacao] = useState(false)
 
+  // Estados para o AlertDialog de remoção de parcela
+  const [parcelaParaRemover, setParcelaParaRemover] = useState<string | null>(null)
+  const [alertRemoverAberto, setAlertRemoverAberto] = useState(false)
+
   // Verificar se precisa usar a gestão financeira - exibir para todas as apólices e propostas
   const usarGestaoFinanceira = tipoDocumento === "apolice" || tipoDocumento === "proposta";
 
@@ -935,18 +939,6 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
       console.log("Valor total calculado:", valorTotalAtualizado);
       
       // 2. Preparar dados para atualização
-      const dataVencimento = parcelas[0].data_vencimento 
-          ? (typeof parcelas[0].data_vencimento === 'string' 
-              ? parcelas[0].data_vencimento 
-              : (parcelas[0].data_vencimento as Date).toISOString().split('T')[0])
-          : null;
-
-      const dataPagamento = parcelas[0].data_pagamento 
-          ? (typeof parcelas[0].data_pagamento === 'string' 
-              ? parcelas[0].data_pagamento 
-              : (parcelas[0].data_pagamento as Date).toISOString().split('T')[0])
-          : null;
-
       const dadosParaAtualizar = {
         forma_pagamento: formaPagamento,
         quantidade_parcelas: novaQuantidadeParcelas,
@@ -982,8 +974,8 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
         // Garantir que os campos de data estejam no formato correto
         const dadosParcelaParaAtualizar = {
           valor: parcela.valor,
-          data_vencimento: dataVencimento,
-          data_pagamento: dataPagamento,
+          data_vencimento: parcela.data_vencimento,
+          data_pagamento: parcela.data_pagamento,
           status: parcela.status
         };
         
@@ -1112,11 +1104,6 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
     
     console.log("Removendo parcela:", id);
     
-    // Confirmar remoção
-    if (!confirm("Tem certeza que deseja remover esta parcela?")) {
-      return;
-    }
-    
     // Remover parcela do banco de dados
     supabase
       .from("parcelas_pagamento")
@@ -1130,6 +1117,7 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
         }
         
         console.log("Parcela removida com sucesso");
+        toast.success("Parcela removida com sucesso");
         
         // Remover do estado
         setParcelas(prev => prev.filter(p => p.id !== id));
@@ -1155,13 +1143,36 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
   }
 
   function getStatusBadge(status: string) {
+    // Se for "pendente", verificar a data para determinar se está "À Vencer" ou "Atrasado"
+    if (status === "pendente" && dadosFinanceiros) {
+      const parcela = parcelas.find(p => p.status === status);
+      if (parcela && parcela.data_vencimento) {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        
+        const dataVenc = new Date(parcela.data_vencimento);
+        dataVenc.setHours(0, 0, 0, 0);
+        
+        if (dataVenc.getTime() === hoje.getTime()) {
+          return <Badge className="bg-yellow-500">Vence Hoje</Badge>;
+        }
+        
+        if (dataVenc > hoje) {
+          return <Badge className="bg-blue-500">À Vencer</Badge>;
+        }
+        
+        return <Badge className="bg-orange-500">Atrasado</Badge>;
+      }
+    }
+    
+    // Usar switch com o status como string
     switch (status) {
       case "pago":
         return <Badge className="bg-green-500">Pago</Badge>;
       case "pendente":
-        return <Badge className="bg-blue-500">Pendente</Badge>;
+        return <Badge className="bg-blue-500">À Vencer</Badge>;
       case "atrasado":
-        return <Badge className="bg-red-500">Atrasado</Badge>;
+        return <Badge className="bg-orange-500">Atrasado</Badge>;
       case "cancelado":
         return <Badge className="bg-gray-500">Cancelado</Badge>;
       default:
@@ -1329,7 +1340,7 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="valor-total">Valor Total</Label>
+                        <Label htmlFor="valor-total">Prêmio Total</Label>
                         <div className="p-2 border border-gray-800 rounded-md text-sm bg-background">
                           {formatarMoeda(dadosFinanceiros?.valor_total || 0)}
                         </div>
@@ -1364,21 +1375,45 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
                                   {editando ? (
                                     <Popover>
                                       <PopoverTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-start text-left font-normal bg-background border border-gray-800">
-                                          {parcela.data_vencimento ? format(parseConsistentDate(parcela.data_vencimento) || new Date(), "dd/MM/yyyy") : "Selecionar data"}
-                                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                        </Button>
+                                        <div className="relative">
+                                          <Input
+                                            type="text"
+                                            placeholder="dd/mm/aaaa"
+                                            value={parcela.data_vencimento ? format(parseConsistentDate(parcela.data_vencimento) || new Date(), "dd/MM/yyyy") : ""}
+                                            onChange={(e) => {
+                                              const inputDate = e.target.value;
+                                              // Permitir digitação e formatação automática
+                                              if (inputDate) {
+                                                const parts = inputDate.split('/');
+                                                if (parts.length === 3 && parts[2].length === 4) {
+                                                  try {
+                                                    const day = parseInt(parts[0]);
+                                                    const month = parseInt(parts[1]) - 1;
+                                                    const year = parseInt(parts[2]);
+                                                    
+                                                    const date = new Date(year, month, day);
+                                                    if (!isNaN(date.getTime())) {
+                                                      const dataFormatada = formatDateForStorage(date);
+                                                      atualizarParcela(parcela.id, "data_vencimento", dataFormatada);
+                                                    }
+                                                  } catch (error) {
+                                                    console.error("Data inválida:", error);
+                                                  }
+                                                }
+                                              }
+                                            }}
+                                            className="w-full pr-10 bg-background border border-gray-800 focus:ring-primary"
+                                          />
+                                          <CalendarIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 opacity-50" />
+                                        </div>
                                       </PopoverTrigger>
                                       <PopoverContent className="w-auto p-0" align="start">
                                         <Calendar
                                           mode="single"
                                           selected={parseConsistentDate(parcela.data_vencimento)}
                                           onSelect={(date) => {
-                                            console.log("Nova data selecionada:", date);
-                                            // Usar nossa função segura para formatar a data
                                             if (date) {
                                               const dataFormatada = formatDateForStorage(date);
-                                              console.log("Data formatada:", dataFormatada);
                                               atualizarParcela(parcela.id, "data_vencimento", dataFormatada);
                                             }
                                           }}
@@ -1483,7 +1518,10 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      onClick={() => removerParcela(parcela.id)}
+                                      onClick={() => {
+                                        setParcelaParaRemover(parcela.id);
+                                        setAlertRemoverAberto(true);
+                                      }}
                                       className="text-red-500 hover:text-red-700"
                                     >
                                       <Trash2 className="h-4 w-4" />
@@ -1553,15 +1591,15 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Recriar dados financeiros</AlertDialogTitle>
+                                <AlertDialogTitle>Recriar Dados Financeiros</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Tem certeza que deseja recriar os dados financeiros? Todos os dados atuais serão perdidos.
+                                  Tem certeza que deseja recriar os dados financeiros? Esta ação apagará todos os dados atuais de parcelas e recriará com base nas informações do documento.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                 <AlertDialogAction onClick={recriarDados}>
-                                  OK
+                                  Sim, Recriar Dados
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1576,6 +1614,32 @@ export function PainelPagamentos({ documentoId, tipoDocumento, dadosOriginais }:
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AlertDialog para confirmar remoção de parcela */}
+      <AlertDialog open={alertRemoverAberto} onOpenChange={setAlertRemoverAberto}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover Parcela</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover esta parcela?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (parcelaParaRemover) {
+                  removerParcela(parcelaParaRemover);
+                  setParcelaParaRemover(null);
+                }
+              }}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 } 

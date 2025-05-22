@@ -60,7 +60,7 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
   const [isLoadingHistorico, setIsLoadingHistorico] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar histórico de documentos do Supabase
+  // Carregar histórico de documentos do Supabase para verificar se já existe um link
   useEffect(() => {
     carregarHistorico();
   }, [documentoId]);
@@ -70,37 +70,24 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
     
     setIsLoadingHistorico(true);
     try {
-      // Verificar se o cliente Supabase está inicializado corretamente
       if (!supabase) {
         console.error("Cliente Supabase não está inicializado");
-        toast.error("Erro ao conectar com o banco de dados");
         return;
       }
 
-      // Verificar se o documentoId é um UUID válido
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(documentoId)) {
-        console.error("O ID do documento não é um UUID válido:", documentoId);
-        toast.error("ID do documento inválido");
-        return;
-      }
-
-      console.log("Buscando documentos para o ID:", documentoId);
-      
       const { data, error } = await supabase
         .from('documentos_anexos')
         .select('*')
         .eq('documento_id', documentoId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(1);
       
       if (error) {
         console.error("Erro Supabase:", error.code, error.message, error.details);
-        toast.error("Erro ao carregar histórico de documentos");
         return;
       }
       
       if (data && data.length > 0) {
-        console.log("Dados recuperados do Supabase:", data);
         setDocumentosHistorico(data);
         setTemHistorico(true);
         
@@ -111,7 +98,6 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
       }
     } catch (error) {
       console.error("Erro ao carregar histórico de documentos:", error);
-      toast.error("Erro ao carregar histórico");
     } finally {
       setIsLoadingHistorico(false);
     }
@@ -338,14 +324,14 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full h-full">
       <CardHeader>
         <CardTitle className="flex items-center">
           <Upload className="h-5 w-5 mr-2" />
-          Documentos Adicionais
+          Upload de Documentos
         </CardTitle>
         <CardDescription>
-          Arraste e solte ou clique para adicionar arquivos relacionados a este documento
+          Arraste e solte ou clique para adicionar arquivos relacionados a este seguro
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -376,7 +362,7 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
             <div className="flex flex-col items-center py-4">
               <CheckCircle className="h-10 w-10 text-green-500 mb-4" />
               <p className="text-center font-medium mb-2">Arquivos enviados com sucesso!</p>
-              <p className="text-center text-muted-foreground text-sm">O histórico de documentos está disponível abaixo</p>
+              <p className="text-center text-muted-foreground text-sm">O histórico de documentos será atualizado automaticamente</p>
             </div>
           ) : status === 'error' ? (
             <div className="flex flex-col items-center py-4">
@@ -473,37 +459,6 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
             </div>
           </div>
         )}
-
-        {isLoadingHistorico ? (
-          <div className="mt-6 text-center">
-            <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-            <p className="text-sm text-muted-foreground mt-2">Carregando histórico...</p>
-          </div>
-        ) : documentosHistorico.length > 0 ? (
-          <div className="mt-6">
-            <Label className="mb-2 block">Histórico de documentos</Label>
-            <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {documentosHistorico.map(documento => (
-                <div key={documento.id} className="flex items-center gap-3 p-3 bg-muted rounded-md">
-                  <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{documento.tipo_arquivo}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {documento.nome_arquivo} • {new Date(documento.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    onClick={() => window.open(documento.drive_link, '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </CardContent>
       <CardFooter className="flex justify-between">
         <p className="text-xs text-muted-foreground">
