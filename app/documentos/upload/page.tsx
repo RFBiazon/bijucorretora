@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
-import { FileUp, Upload, File, X, CheckCircle, AlertCircle, Loader2, Plus } from "lucide-react"
+import { FileUp, Upload, File, X, CheckCircle, AlertCircle, Loader2, Plus, ExternalLink } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { supabase } from "@/lib/supabase"
 import PageTransition from "@/components/PageTransition"
@@ -27,6 +27,9 @@ export default function UploadPage() {
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error" | "checking">("idle")
   const [propostaId, setPropostaId] = useState<string | null>(null)
   const [checkCount, setCheckCount] = useState(0)
+  const [driveLink, setDriveLink] = useState<string | null>(null)
+  const [temHistoricoAnexos, setTemHistoricoAnexos] = useState(false)
+  const [driveId, setDriveId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
   const router = useRouter()
@@ -74,6 +77,49 @@ export default function UploadPage() {
             clearInterval(intervalId!)
             setUploadStatus("success")
 
+            // Se temos um link do Drive, vamos atualizá-lo no registro
+            // E também salvar na tabela documentos_anexos para exibição na aba anexos
+            if (driveLink) {
+              try {
+                // 1. Atualizar no registro principal
+                const { error: updateError } = await supabase
+                  .from("ocr_processamento")
+                  .update({ drive_link: driveLink })
+                  .eq("id", propostaId)
+                
+                if (updateError) {
+                  console.error("Erro ao atualizar link do Drive:", updateError)
+                } else {
+                  console.log("Link do Drive salvo com sucesso no registro principal:", driveLink)
+                }
+                
+                // 2. Salvar na tabela documentos_anexos (como no UploadDocumentos.tsx)
+                const tipoMapping: Record<string, string> = {
+                  proposta: "Proposta", 
+                  apolice: "Apólice", 
+                  endosso: "Endosso", 
+                  cancelado: "Cancelamento"
+                };
+                
+                const { error: anexoError } = await supabase
+                  .from("documentos_anexos")
+                  .insert([{
+                    documento_id: propostaId,
+                    nome_arquivo: selectedFiles[0].file.name,
+                    tipo_arquivo: tipoMapping[selectedFiles[0].tipo] || "Proposta",
+                    drive_link: driveLink
+                  }])
+                
+                if (anexoError) {
+                  console.error("Erro ao salvar no histórico de anexos:", anexoError)
+                } else {
+                  console.log("Link do Drive salvo com sucesso na tabela de anexos")
+                }
+              } catch (updateError) {
+                console.error("Erro ao atualizar registros:", updateError)
+              }
+            }
+
             toast.success({
               title: "Proposta registrada",
               description: "A proposta foi registrada com sucesso e está sendo processada.",
@@ -105,7 +151,7 @@ export default function UploadPage() {
         clearInterval(intervalId)
       }
     }
-  }, [propostaId, uploadStatus, checkCount, toast, router])
+  }, [propostaId, uploadStatus, checkCount, toast, router, driveLink, selectedFiles])
 
   // Persistência da lista de arquivos no localStorage
   useEffect(() => {
@@ -175,23 +221,42 @@ export default function UploadPage() {
   };
 
   // Enviar arquivos para a fila global
-  const handleSend = () => {
+  const handleSend = async () => {
     // Só envia arquivos que ainda não estão na fila global
     const nomesNaFila = queue.map(f => f.name);
     const arquivosParaEnviar = selectedFiles.filter(f => !nomesNaFila.includes(f.file.name));
     if (arquivosParaEnviar.length === 0) return;
-    // Agrupar arquivos por tipo para chamada correta do contexto
-    const tiposUnicos = Array.from(new Set(arquivosParaEnviar.map(f => f.tipo)));
-    tiposUnicos.forEach(tipo => {
-      const arquivosDoTipo = arquivosParaEnviar.filter(f => f.tipo === tipo).map(f => f.file);
-      addFiles(arquivosDoTipo, tipo);
-    });
-    toast.success({
-      title: "Arquivos enviados para processamento",
-      description: `${arquivosParaEnviar.length} arquivo(s) enviados para a fila!`,
-    });
+    
+    setIsUploading(true);
+    
+    try {
+      // 1. Adicionar à fila global
+      // Agrupar arquivos por tipo para chamada correta do contexto
+      const tiposUnicos = Array.from(new Set(arquivosParaEnviar.map(f => f.tipo)));
+      tiposUnicos.forEach(tipo => {
+        const arquivosDoTipo = arquivosParaEnviar.filter(f => f.tipo === tipo).map(f => f.file);
+        addFiles(arquivosDoTipo, tipo);
+      });
+      
+      toast.success({
+        title: "Arquivos enviados para processamento",
+        description: `${arquivosParaEnviar.length} arquivo(s) enviados para a fila!`,
+      });
+      
+      // 2. Processar OCR e Drive em paralelo
+      // Este processo executa em paralelo com a fila global
+      await handleUpload();
+      
+    } catch (error) {
+      console.error("Erro ao processar envio:", error);
+      toast.error({
+        title: "Erro no processamento",
+        description: "Ocorreu um erro ao processar os arquivos.",
+      });
+      setIsUploading(false);
+    }
   };
-
+  
   // Função para obter o status do arquivo na fila global
   const getFileStatus = (name: string) => {
     const item = queue.find((f) => f.name === name);
@@ -205,85 +270,235 @@ export default function UploadPage() {
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
+    e.preventDefault();
+    setIsDragging(true);
+  };
 
   const handleDragLeave = () => {
-    setIsDragging(false)
-  }
+    setIsDragging(false);
+  };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
+    e.preventDefault();
+    setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileChange(e.dataTransfer.files)
+      handleFileChange(e.dataTransfer.files);
     }
-  }
+  };
 
+  // Verificar se existem anexos para o documento ao carregar o componente
+  const verificarHistoricoAnexos = async (id: string) => {
+    try {
+      console.log("Verificando histórico de anexos para ID:", id);
+      const { data, error } = await supabase
+        .from('documentos_anexos')
+        .select('*')
+        .eq('documento_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (error) {
+        console.error("Erro ao verificar histórico de anexos:", error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        console.log("Histórico de anexos encontrado:", data[0]);
+        setTemHistoricoAnexos(true);
+        
+        // Extrair o drive_id do link, se disponível
+        if (data[0].drive_link && data[0].drive_link.includes('drive.google.com')) {
+          const driveIdMatch = data[0].drive_link.match(/\/folders\/([^/?]+)/);
+          if (driveIdMatch && driveIdMatch[1]) {
+            setDriveId(driveIdMatch[1]);
+            console.log("Drive ID extraído do histórico:", driveIdMatch[1]);
+          }
+        }
+      } else {
+        console.log("Nenhum histórico de anexos encontrado para este ID");
+        setTemHistoricoAnexos(false);
+        setDriveId(null);
+      }
+    } catch (error) {
+      console.error("Erro ao verificar histórico de anexos:", error);
+    }
+  };
+
+  // Função auxiliar para upload ao Google Drive
+  const uploadToGoogleDrive = async (file: File, documentoId: string, tipoArquivo: string): Promise<string | null> => {
+    try {
+      console.log("=================== INÍCIO UPLOAD GOOGLE DRIVE ===================");
+      console.log("Arquivo:", file.name, "Tamanho:", file.size, "bytes", "Tipo MIME:", file.type);
+      console.log("ID do documento:", documentoId);
+      console.log("Tipo de arquivo formatado:", tipoArquivo);
+      
+      // Determinar qual webhook usar com base na existência de histórico
+      const webhookUrl = temHistoricoAnexos && driveId
+        ? process.env.NEXT_PUBLIC_WEBHOOK_DOCUMENTOSUPDT_URL
+        : process.env.NEXT_PUBLIC_WEBHOOK_DOCUMENTOS_URL;
+      
+      console.log(`Usando webhook ${temHistoricoAnexos ? 'de atualização' : 'de criação'}:`, webhookUrl);
+      
+      if (!webhookUrl) {
+        console.error("URL do webhook não configurada");
+        return null;
+      }
+      
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("documentoId", documentoId);
+      formData.append("nomeSegurado", "Proposta_" + documentoId);
+      formData.append("tipoArquivo", tipoArquivo);
+      
+      // Se temos histórico e ID do Drive, incluir no formData
+      if (temHistoricoAnexos && driveId) {
+        console.log("Incluindo drive_id existente:", driveId);
+        formData.append("drive_id", driveId);
+      }
+      
+      console.log("FormData criado com os campos: file, documentoId, nomeSegurado, tipoArquivo", temHistoricoAnexos ? ", drive_id" : "");
+      console.log("Iniciando request para o webhook do Drive...");
+      
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        body: formData,
+      });
+      
+      console.log("Resposta recebida:", response.status, response.statusText);
+      console.log("Headers:", [...response.headers.entries()]);
+      
+      if (!response.ok) {
+        console.error("Erro na resposta do webhook do Drive:", response.status);
+        const errorText = await response.text();
+        console.error("Detalhes do erro:", errorText);
+        return null;
+      }
+      
+      console.log("Lendo texto da resposta...");
+      const driveLinkText = await response.text();
+      console.log("Texto completo da resposta:", driveLinkText);
+      
+      if (driveLinkText && driveLinkText.includes('drive.google.com')) {
+        console.log("Link do Drive identificado com sucesso:", driveLinkText);
+        
+        // Se é o primeiro upload (não tinha histórico), extrair o drive_id para uso futuro
+        if (!temHistoricoAnexos) {
+          const driveIdMatch = driveLinkText.match(/\/folders\/([^/?]+)/);
+          if (driveIdMatch && driveIdMatch[1]) {
+            setDriveId(driveIdMatch[1]);
+            setTemHistoricoAnexos(true);
+            console.log("Drive ID extraído para futuros uploads:", driveIdMatch[1]);
+          }
+        }
+        
+        console.log("=================== FIM UPLOAD GOOGLE DRIVE: SUCESSO ===================");
+        return driveLinkText;
+      }
+      
+      console.error("Resposta não contém link do Drive válido");
+      console.log("=================== FIM UPLOAD GOOGLE DRIVE: FALHA ===================");
+      return null;
+    } catch (error) {
+      console.error("Exceção durante upload para o Drive:", error);
+      console.log("=================== FIM UPLOAD GOOGLE DRIVE: ERRO ===================");
+      return null;
+    }
+  };
+
+  // Função para realizar upload direto
   const handleUpload = async () => {
-    if (selectedFiles.length === 0) return
+    if (selectedFiles.length === 0) return;
 
-    setIsUploading(true)
-    setUploadStatus("uploading")
-    setUploadProgress(0)
-    setCheckCount(0)
+    setIsUploading(true);
+    setUploadStatus("uploading");
+    setUploadProgress(0);
+    setCheckCount(0);
+    setDriveLink(null);
 
-    const formData = new FormData()
+    const formData = new FormData();
     selectedFiles.forEach((f) => {
-      formData.append("data", f.file)
-    })
-    formData.append("tipo_documento", selectedFiles[0].tipo)
+      formData.append("data", f.file);
+    });
+    formData.append("tipo_documento", selectedFiles[0].tipo);
 
     try {
       // Simular progresso de upload
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           if (prev >= 95) {
-            clearInterval(progressInterval)
-            return 95
+            clearInterval(progressInterval);
+            return 95;
           }
-          return prev + 5
-        })
-      }, 200)
+          return prev + 5;
+        });
+      }, 200);
 
-      // Enviar para processamento externo
+      // 1. Enviar para processamento OCR (fluxo original)
       const response = await fetch(process.env.NEXT_PUBLIC_WEBHOOK_PROPOSTA_URL || "", {
         method: "POST",
         body: formData,
-      })
-
-      clearInterval(progressInterval)
-      setUploadProgress(100)
+      });
 
       if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`)
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json()
-
+      const data = await response.json();
       
       // O ID da proposta vem do retorno do webhook
-      const id = data.id
-      setPropostaId(id)
+      const id = data.id;
+      setPropostaId(id);
+      
+      // Verificar se já existem anexos para esta proposta
+      await verificarHistoricoAnexos(id);
+
+      // 2. Upload para o Google Drive usando a função auxiliar
+      // Converter o tipo para o formato correto
+      const tipoMapping: Record<string, string> = {
+        proposta: "Proposta", 
+        apolice: "Apólice", 
+        endosso: "Endosso", 
+        cancelado: "Cancelamento"
+      };
+      const tipoFormatado = tipoMapping[selectedFiles[0].tipo] || "Proposta";
+      
+      console.log("Preparando upload para o Google Drive");
+      console.log("Arquivo selecionado:", selectedFiles[0].file.name);
+      console.log("Tipo original:", selectedFiles[0].tipo);
+      console.log("Tipo formatado:", tipoFormatado);
+      
+      // Fazer o upload para o Drive e aguardar o link
+      console.log("Chamando função uploadToGoogleDrive...");
+      const link = await uploadToGoogleDrive(selectedFiles[0].file, id, tipoFormatado);
+      
+      if (link) {
+        console.log("Link do Drive obtido e armazenado no estado:", link);
+        setDriveLink(link);
+      } else {
+        console.error("Não foi possível obter link do Drive - retornou null");
+      }
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
 
       // Mudar para o estado de verificação
-      setUploadStatus("checking")
+      setUploadStatus("checking");
 
       toast.info({
         title: "Upload concluído",
         description: "O arquivo foi enviado com sucesso. Verificando registro...",
-      })
+      });
     } catch (error) {
-      console.error("Erro no upload:", error)
-      setUploadStatus("error")
+      console.error("Erro no upload:", error);
+      setUploadStatus("error");
       toast.error({
         title: "Erro no upload",
         description: `Ocorreu um erro ao enviar o arquivo: ${error instanceof Error ? error.message : "Erro desconhecido"}`,
-      })
-      setIsUploading(false)
+      });
+    } finally {
+      setIsUploading(false);
     }
-  }
+  };
 
   const resetForm = () => {
     setSelectedFiles([])
@@ -291,6 +506,7 @@ export default function UploadPage() {
     setUploadProgress(0)
     setPropostaId(null)
     setCheckCount(0)
+    setDriveLink(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -455,10 +671,13 @@ export default function UploadPage() {
                       {isUploading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Enviando...
+                          Processando...
                         </>
                       ) : (
-                        "Enviar arquivos"
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Enviar arquivo
+                        </>
                       )}
                     </Button>
                   </CardFooter>

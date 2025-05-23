@@ -27,6 +27,7 @@ interface UploadDocumentosProps {
 }
 
 type DocumentoTipo = 
+  | "Proposta"
   | "Apólice" 
   | "Cartão da Assistência 24Hs" 
   | "Carta Verde" 
@@ -400,6 +401,7 @@ export function UploadDocumentos({ documentoId, nomeSegurado }: UploadDocumentos
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="Proposta">Proposta</SelectItem>
                       <SelectItem value="Apólice">Apólice</SelectItem>
                       <SelectItem value="Cartão da Assistência 24Hs">Cartão da Assistência 24Hs</SelectItem>
                       <SelectItem value="Carta Verde">Carta Verde</SelectItem>

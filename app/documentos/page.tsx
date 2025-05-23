@@ -159,6 +159,9 @@ export default function PropostasPage() {
   const [propostasFiltradas, setPropostasFiltradas] = useState<DocumentoProcessado[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  // Adicionar debounce para o termo de busca
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
   const [propostaParaExcluir, setPropostaParaExcluir] = useState<string | null>(null)
   const [novaPropostaId, setNovaPropostaId] = useState<string | null>(null)
   const [propostaAtualizada, setPropostaAtualizada] = useState<any>(null)
@@ -167,6 +170,12 @@ export default function PropostasPage() {
   const [isTabLoading, setIsTabLoading] = useState(false)
   const [tabToShow, setTabToShow] = useState(tabParam || "todas")
   const [ordenacao, setOrdenacao] = useState<"recente" | "antiga" | "vigencia_prox" | "vigencia_dist" | "vencimento_prox" | "vencimento_dist">("vencimento_prox")
+  
+  // Sistema de cache para melhorar a experiência
+  const [cachedPropostas, setCachedPropostas] = useState<DocumentoProcessado[]>([]);
+  const [cachedFilteredPropostas, setCachedFilteredPropostas] = useState<DocumentoProcessado[]>([]);
+  const [documentsReady, setDocumentsReady] = useState(false);
+  const [isCaching, setIsCaching] = useState(false);
   
   // Novos estados para filtros
   const [filtroAberto, setFiltroAberto] = useState(false)
@@ -200,7 +209,7 @@ export default function PropostasPage() {
   const lastCardRef = useRef<HTMLDivElement | null>(null);
 
   // Adicionar no início da função PropostasPage
-  const BATCH_SIZE = 9; // Número de documentos a serem renderizados por vez
+  const BATCH_SIZE = 6; // Número de documentos a serem renderizados por vez
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
 
   // Função para verificar se o seguro está totalmente quitado
@@ -247,32 +256,12 @@ export default function PropostasPage() {
       
       // Fallback para a lógica anterior caso a consulta direta falhe
       if (proposta.parcelas?.proximaParcela) {
-        // Usamos uma heurística: se a próxima parcela está paga e é a última 
-        // ou próxima da última, consideramos quitado
-        const status = proposta.parcelas.proximaParcela.status;
-        const numParcela = proposta.parcelas.proximaParcela.numero;
+        const numeroParcela = proposta.parcelas.proximaParcela.numero;
         const totalParcelas = proposta.parcelas.totalParcelas || 1;
-        
-        // Se é a última parcela e está paga
-        if (status === "pago" && numParcela >= totalParcelas) {
-          return true;
-        }
-        
-        // Se a próxima parcela é a última, então todas as anteriores já foram pagas
-        // Algumas vezes recebemos a última parcela como proximaParcela
-        if (numParcela === totalParcelas) {
-          // Se última parcela está paga, documento está quitado
-          return status === "pago";
-        }
-        
-        // NOVA VERIFICAÇÃO: Se for FICHA DE COMPENSAÇÃO e pelo menos uma parcela estiver paga
-        // (algumas seguradoras enviam apenas uma parcela no documento)
-        if (formaPagamento.includes("ficha") && status === "pago") {
-          return true;
-        }
+        const status = proposta.parcelas.proximaParcela.status;
+        return numeroParcela === totalParcelas && status === "pago";
       }
       
-      // Se não podemos determinar pelos dados disponíveis, assumimos que não está quitado
       return false;
     } catch (error) {
       console.error("Erro ao verificar status de quitação:", error);
@@ -298,32 +287,85 @@ export default function PropostasPage() {
     }
   };
   
-  // Melhorar a função para carregar o status de quitação de várias propostas de uma vez
+  // Carregar status de quitação para todas as propostas
   const carregarStatusQuitacao = async (propostas: DocumentoProcessado[]) => {
-    // Limitar a 10 documentos por vez para evitar sobrecarga
-    const lote = propostas.slice(0, 10);
-    
-    // Processar em paralelo
-    const resultados = await Promise.all(
-      lote.map(async (proposta) => {
-        try {
-          const quitado = await isSeguroQuitado(proposta);
-          return { id: proposta.id, quitado };
-        } catch (erro) {
-          console.error(`Erro ao verificar quitação do documento ${proposta.id}:`, erro);
-          return { id: proposta.id, quitado: false };
-        }
-      })
-    );
-    
-    // Atualizar o estado com todos os resultados de uma vez
-    setStatusQuitacao(prev => {
-      const novoEstado = { ...prev };
-      resultados.forEach(({ id, quitado }) => {
-        novoEstado[id] = quitado;
+    if (!propostas.length) return;
+  
+    try {
+      // Obter todos os IDs de documentos de uma vez
+      const documentoIds = propostas.map(p => p.id);
+      
+      // Buscar todos os dados financeiros de uma vez só
+      const { data: dadosFinanceiros, error } = await supabase
+        .from("dados_financeiros")
+        .select("id, documento_id")
+        .in("documento_id", documentoIds);
+        
+      if (error) throw error;
+      
+      // Mapear IDs de documentos para IDs de dados financeiros
+      const mapaDadosFinanceiros: {[key: string]: string} = {};
+      dadosFinanceiros?.forEach(dado => {
+        mapaDadosFinanceiros[dado.documento_id] = dado.id;
       });
-      return novoEstado;
-    });
+      
+      // Buscar parcelas para todos os dados financeiros de uma vez
+      const idsFinanceiros = dadosFinanceiros?.map(df => df.id) || [];
+      
+      if (idsFinanceiros.length === 0) {
+        return;
+      }
+      
+      // Buscar em lotes de 20 para evitar sobrecarga
+      const resultados: {[key: string]: string[]} = {};
+      const tamanhoLote = 20;
+      
+      for (let i = 0; i < idsFinanceiros.length; i += tamanhoLote) {
+        const loteAtual = idsFinanceiros.slice(i, i + tamanhoLote);
+        
+        const { data: parcelas, error: erroParcelasSuporte } = await supabase
+          .from("parcelas_pagamento")
+          .select("dados_financeiros_id, status")
+          .in("dados_financeiros_id", loteAtual);
+        
+        if (erroParcelasSuporte) {
+          console.error("Erro ao buscar parcelas:", erroParcelasSuporte);
+          continue;
+        }
+        
+        // Agrupar por dados_financeiros_id
+        parcelas?.forEach(parcela => {
+          if (!resultados[parcela.dados_financeiros_id]) {
+            resultados[parcela.dados_financeiros_id] = [];
+          }
+          resultados[parcela.dados_financeiros_id].push(parcela.status);
+        });
+        
+        // Aguardar um pequeno timeout entre lotes para não sobrecarregar
+        if (i + tamanhoLote < idsFinanceiros.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      // Mapear resultados para status de quitação
+      const novoStatusQuitacao: {[id: string]: boolean} = {};
+      
+      for (const proposta of propostas) {
+        const idFinanceiro = mapaDadosFinanceiros[proposta.id];
+        if (idFinanceiro) {
+          const statusParcelas = resultados[idFinanceiro] || [];
+          // Documento está quitado se houver parcelas e todas estiverem pagas
+          novoStatusQuitacao[proposta.id] = statusParcelas.length > 0 && 
+            statusParcelas.every(status => status === "pago");
+        } else {
+          novoStatusQuitacao[proposta.id] = false;
+        }
+      }
+      
+      setStatusQuitacao(novoStatusQuitacao);
+    } catch (error) {
+      console.error("Erro ao carregar status de quitação:", error);
+    }
   };
   
   // Função para verificar se o documento possui anexos no Google Drive
@@ -517,35 +559,48 @@ export default function PropostasPage() {
 
   // Modificar o useEffect para carregamento lazy de metadados
   useEffect(() => {
-    if (propostas.length > 0) {
-      // Usar requestIdleCallback para carregar metadados quando o navegador estiver ocioso
-      if ('requestIdleCallback' in window) {
-        // @ts-ignore - TypeScript pode não reconhecer requestIdleCallback
-        window.requestIdleCallback(() => {
-          carregarInfoSinistros(propostas);
-        }, { timeout: 2000 });
-        
-        // @ts-ignore
-        window.requestIdleCallback(() => {
-          carregarInfoAnexos(propostas);
-        }, { timeout: 3000 });
-      } else {
-        // Fallback para navegadores que não suportam requestIdleCallback
-        setTimeout(() => carregarInfoSinistros(propostas), 1000);
-        setTimeout(() => carregarInfoAnexos(propostas), 2000);
-      }
-    }
-  }, [propostas]);
-
-  // Atualizar o useEffect que chama a função de carregamento de status
-  useEffect(() => {
-    // Processamos apenas documentos que não tiveram seu status carregado ainda
-    const propostasParaVerificar = propostasFiltradas.filter(
-      proposta => statusQuitacao[proposta.id] === undefined
-    );
+    // Certifique-se de que o estado visibleCount não seja muito alto para carregamento inicial
+    const INITIAL_BATCH = 6;
+    setVisibleCount(INITIAL_BATCH);
     
-    if (propostasParaVerificar.length > 0) {
-      carregarStatusQuitacao(propostasParaVerificar);
+    // Carregar informações de sinistros e anexos em lotes separados
+    const carregarInformacoes = async () => {
+      if (propostas.length === 0) return;
+      
+      // Carregar apenas para os primeiros itens visíveis
+      const propostasBatch = propostasFiltradas.slice(0, INITIAL_BATCH);
+      
+      // Carregar status de quitação primeiro (mais importante para UI)
+      await carregarStatusQuitacao(propostasBatch);
+      
+      // Carregar informações de anexos e sinistros em paralelo,
+      // mas com um pequeno atraso para priorizar a renderização inicial
+      setTimeout(() => {
+        carregarInfoAnexos(propostasBatch);
+        setTimeout(() => {
+          carregarInfoSinistros(propostasBatch);
+        }, 300);
+      }, 200);
+      
+      // Se tiver mais itens, carregar em lotes subsequentes
+      if (propostasFiltradas.length > INITIAL_BATCH) {
+        const lote2 = propostasFiltradas.slice(INITIAL_BATCH, INITIAL_BATCH * 2);
+        setTimeout(async () => {
+          await carregarStatusQuitacao(lote2);
+          setVisibleCount(prev => prev + lote2.length);
+          
+          setTimeout(() => {
+            carregarInfoAnexos(lote2);
+            setTimeout(() => {
+              carregarInfoSinistros(lote2);
+            }, 300);
+          }, 200);
+        }, 800);
+      }
+    };
+    
+    if (propostasFiltradas.length > 0) {
+      carregarInformacoes();
     }
   }, [propostasFiltradas]);
 
@@ -626,14 +681,15 @@ export default function PropostasPage() {
     }
   }, [])
 
+  // Modificar useEffect para usar o termo com debounce em vez do searchTerm direto
   useEffect(() => {
     const buscar = async () => {
-    if (searchTerm.trim() === "") {
-      setPropostasFiltradas(propostas)
-      return
-    }
+      if (debouncedSearchTerm.trim() === "") {
+        setPropostasFiltradas(propostas)
+        return
+      }
       setIsLoading(true)
-      const term = searchTerm.trim()
+      const term = debouncedSearchTerm.trim()
       let resultados: any[] = []
       // Regex para identificar padrões
       const soLetras = /^[A-Za-zÀ-ÿ ]+$/
@@ -689,13 +745,37 @@ export default function PropostasPage() {
         vistos.add(item.id)
         return true
       })
-      setPropostasFiltradas(unicos.map((proposta: any) => normalizarProposta(proposta)))
-      setIsLoading(false)
+      
+      const resultadosNormalizados = unicos.map((proposta: any) => normalizarProposta(proposta));
+      
+      // Atualizar os estados
+      setPropostas(resultadosNormalizados);
+      setPropostasFiltradas(resultadosNormalizados);
+      setIsLoading(false);
+      
+      // Forçar nova renderização com timeout para garantir que 
+      // o React tenha tempo de processar a mudança de estado
+      setTimeout(() => {
+        // Resetar a contagem visível
+        setVisibleCount(6);
+        
+        // Forçar carregamento de informações para os primeiros itens
+        if (resultadosNormalizados.length > 0) {
+          const primeirosItens = resultadosNormalizados.slice(0, 6);
+          carregarStatusQuitacao(primeirosItens);
+          setTimeout(() => {
+            carregarInfoAnexos(primeirosItens);
+            carregarInfoSinistros(primeirosItens);
+          }, 300);
+        }
+      }, 100);
+      
       // Log para debug
-      console.log(`[BUSCA] termo: '${term}' | modo: ${debug} | encontrados: ${unicos.length}`)
+      console.log(`[BUSCA] termo: '${term}' | modo: ${debug} | encontrados: ${unicos.length}`);
     }
-    buscar()
-  }, [searchTerm])
+    
+    buscar();
+  }, [debouncedSearchTerm]); // Alterar a dependência para debouncedSearchTerm
 
   // Modificar a função fetchByTab para implementar a solução de forma mais direta
   useEffect(() => {
@@ -797,54 +877,15 @@ export default function PropostasPage() {
         );
         
         // 4. Ordenar os documentos por vencimento da parcela
-        const propostasOrdenadas = [...propostasComParcelas].sort((a, b) => {
-          // Verificar se algum dos documentos é cartão de crédito
-          const aCartao = isCartaoCredito(a);
-          const bCartao = isCartaoCredito(b);
-          
-          // Se um é cartão e outro não, o cartão vai depois
-          if (aCartao && !bCartao) return 1;
-          if (!aCartao && bCartao) return -1;
-          
-          // Obter datas de vencimento
-          const getDataVencimento = (doc: DocumentoProcessado) => {
-            if (!doc.parcelas?.proximaParcela?.data_vencimento) return null;
-            return new Date(doc.parcelas.proximaParcela.data_vencimento);
-          };
-          
-          const vencA = getDataVencimento(a);
-          const vencB = getDataVencimento(b);
-          
-          // Se um tem data e outro não, o que tem data vem primeiro
-          if (vencA && !vencB) return -1;
-          if (!vencA && vencB) return 1;
-          
-          // Se ambos têm datas, comparar por proximidade (mais próximo primeiro)
-          if (vencA && vencB) {
-            // Comparar as datas
-            const hoje = new Date();
-            
-            // Verificar se alguma data está no passado
-            const vencAPassado = vencA < hoje;
-            const vencBPassado = vencB < hoje;
-            
-            // Se uma está no passado e a outra no futuro, a do futuro vem primeiro
-            if (vencAPassado && !vencBPassado) return 1;
-            if (!vencAPassado && vencBPassado) return -1;
-            
-            // Se ambas estão no passado ou ambas no futuro, ordenar normalmente por proximidade
-            return vencA.getTime() - vencB.getTime();
-          }
-          
-          // Se nenhum tem data de vencimento, ordenar por data de criação
-          const dateA = a.criado_em || "";
-          const dateB = b.criado_em || "";
-          return dateB.localeCompare(dateA); // mais recente primeiro
-        });
+        const docsOrdenados = ordenarDocumentos(propostasComParcelas);
         
-        // 5. Atualizar os estados
-        setPropostas(propostasOrdenadas);
-        setPropostasFiltradas(propostasOrdenadas);
+        // No final, depois de processar os dados:
+        setDocumentsReady(false); // Marcar como não pronto 
+        setCachedPropostas(docsOrdenados);
+        setCachedFilteredPropostas(docsOrdenados);
+        
+        // Atualizar também as propostas originais
+        setPropostas(docsOrdenados);
         
       } catch (err) {
         console.error("Erro ao processar dados:", err);
@@ -1861,10 +1902,31 @@ export default function PropostasPage() {
     </AnimatePresence>
   );
 
-  // Adicionar essa função para incrementar o número de itens visíveis
+  // Modificar a função loadMoreVisibleItems para se integrar melhor com o sistema de cache
   const loadMoreVisibleItems = useCallback(() => {
-    setVisibleCount(prev => Math.min(prev + BATCH_SIZE, propostasFiltradas.length));
-  }, [propostasFiltradas.length]);
+    setVisibleCount(prev => {
+      const next = Math.min(prev + BATCH_SIZE, propostasFiltradas.length);
+      
+      // If documents are ready, load metadata for the next batch if needed
+      if (documentsReady && next > prev) {
+        const nextBatch = propostasFiltradas.slice(prev, next);
+        if (nextBatch.length > 0) {
+          // Load metadata for newly visible cards
+          setTimeout(() => {
+            carregarStatusQuitacao(nextBatch);
+            setTimeout(() => {
+              carregarInfoAnexos(nextBatch);
+              setTimeout(() => {
+                carregarInfoSinistros(nextBatch);
+              }, 100);
+            }, 100);
+          }, 100);
+        }
+      }
+      
+      return next; // Return the new count
+    });
+  }, [propostasFiltradas.length, documentsReady]);
 
   // Modificar o useEffect do Intersection Observer para usar a função de carregar mais itens visíveis
   useEffect(() => {
@@ -1985,18 +2047,378 @@ export default function PropostasPage() {
       }
       
       // Atualizar os estados com os novos documentos
-      setPropostas(prev => [...prev, ...documentosUnicos]);
+      const novasPropostas = [...propostas, ...documentosUnicos];
+      setPropostas(novasPropostas);
+      setPropostasFiltradas(prevFiltradas => [...prevFiltradas, ...documentosUnicos]);
       
-      // Dar um pequeno delay para evitar sobrecarga
+      // Incrementar a contagem visível para mostrar alguns dos novos documentos
+      setVisibleCount(prev => prev + Math.min(6, documentosUnicos.length));
+      
+      // Processar os documentos em lotes pequenos para não sobrecarregar
       setTimeout(() => {
-        setIsFetchingMore(false);
-      }, 500);
+        // Iniciar o processamento dos metadados dos novos documentos
+        const processar = async () => {
+          // Processar em pequenos lotes
+          const tamLote = 3;
+          for (let i = 0; i < documentosUnicos.length; i += tamLote) {
+            const loteAtual = documentosUnicos.slice(i, i + tamLote);
+            
+            // Carregar informações para este lote
+            await carregarStatusQuitacao(loteAtual);
+            
+            // Pequeno delay entre operações
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Carregar o resto das informações
+            carregarInfoAnexos(loteAtual);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            carregarInfoSinistros(loteAtual);
+            
+            // Esperar um pouco mais entre lotes
+            if (i + tamLote < documentosUnicos.length) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+          }
+          
+          setIsFetchingMore(false);
+        };
+        
+        processar().catch(erro => {
+          console.error("Erro ao processar novos documentos:", erro);
+          setIsFetchingMore(false);
+        });
+      }, 200);
       
     } catch (error) {
       console.error("Erro ao carregar mais documentos:", error);
       setIsFetchingMore(false);
     }
   };
+
+  // Adicionar um useEffect para implementar o debounce
+  useEffect(() => {
+    // Cancelar timeout anterior, se existir
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    // Configurar novo timeout de 1500ms
+    const timeout = setTimeout(() => {
+      console.log("Executando busca para:", searchTerm);
+      setDebouncedSearchTerm(searchTerm);
+    }, 1500); // Delay de 1500ms
+    
+    setSearchTimeout(timeout);
+    
+    // Cleanup ao desmontar
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTerm]);
+
+  // Modify the useEffect for carregamento de metadados using the system of cache
+  useEffect(() => {
+    // Set initial batch size to 6
+    const BATCH_SIZE = 6;
+    setVisibleCount(BATCH_SIZE);
+    
+    // Função para pré-carregar dados
+    const cacheDocuments = async () => {
+      if (cachedFilteredPropostas.length === 0) return;
+      
+      setIsCaching(true);
+      
+      try {
+        // Process documents in batches of 6
+        const processBatch = async (startIndex: number) => {
+          const endIndex = Math.min(startIndex + BATCH_SIZE, cachedFilteredPropostas.length);
+          const documentosParaProcessar = cachedFilteredPropostas.slice(startIndex, endIndex);
+          
+          if (documentosParaProcessar.length === 0) {
+            // No more documents to process
+            console.log("✅ Pré-carregamento concluído");
+            setDocumentsReady(true);
+            setIsCaching(false);
+            return;
+          }
+          
+          console.log(`Pré-carregando dados para ${documentosParaProcessar.length} documentos (batch ${startIndex/BATCH_SIZE + 1})`);
+          
+          // 1. Carregar status de quitação para todos os documentos
+          await carregarStatusQuitacao(documentosParaProcessar);
+          
+          // 2. Pequeno delay para não sobrecarregar
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // 3. Carregar anexos
+          await carregarInfoAnexos(documentosParaProcessar);
+          
+          // 4. Pequeno delay para não sobrecarregar
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // 5. Carregar sinistros
+          await carregarInfoSinistros(documentosParaProcessar);
+          
+          // Mark cards as ready as they're processed
+          setVisibleCount(prev => Math.min(endIndex, prev + BATCH_SIZE));
+          
+          // If there are more documents, process next batch after a delay
+          if (endIndex < cachedFilteredPropostas.length) {
+            setTimeout(() => processBatch(endIndex), 300);
+          } else {
+            console.log("✅ Pré-carregamento concluído");
+            setDocumentsReady(true);
+            setIsCaching(false);
+          }
+        };
+        
+        // Start with first batch
+        processBatch(0);
+        
+      } catch (error) {
+        console.error("Erro no pré-carregamento:", error);
+        // Em caso de erro, exibir o que temos
+        setDocumentsReady(true);
+        setPropostasFiltradas(cachedFilteredPropostas);
+        setIsCaching(false);
+      }
+    };
+    
+    // Iniciar carregamento em cache se tiver dados e não estiver já em processo
+    if (cachedFilteredPropostas.length > 0 && !isCaching) {
+      cacheDocuments();
+    }
+  }, [cachedFilteredPropostas]);
+
+  // Modificar a busca para trabalhar com o cache
+  useEffect(() => {
+    const buscar = async () => {
+      if (debouncedSearchTerm.trim() === "") {
+        setCachedFilteredPropostas(propostas);
+        setDocumentsReady(true);
+        return;
+      }
+      
+      setIsLoading(true);
+      setDocumentsReady(false); // Reiniciar estado de prontidão dos documentos
+      
+      const term = debouncedSearchTerm.trim();
+      let resultados: any[] = [];
+      
+      // Regex para identificar padrões
+      const soLetras = /^[A-Za-zÀ-ÿ ]+$/
+      const placaRegex = /^[A-Za-z]{3}[0-9A-Za-z]{4}$/i
+      const soNumeros = /^[0-9]+$/
+      let debug = ''
+      
+      try {
+        // Fazer busca com base no tipo de termo
+        if (soLetras.test(term) && term.length >= 4) {
+          // Buscar só por nome
+          debug = 'nome';
+          const { data } = await supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>nome", `%${term}%`).order("criado_em", { ascending: false })
+          resultados = data || []
+        } else if (placaRegex.test(term)) {
+          // Buscar só por placa
+          debug = 'placa';
+          const { data } = await supabase.from("ocr_processamento").select("*").ilike("resultado->veiculo->>placa", `%${term}%`).order("criado_em", { ascending: false })
+          resultados = data || []
+        } else if (soNumeros.test(term) && term.length >= 3) {
+          // Buscar por CPF, proposta e apólice
+          debug = 'numeros';
+          const [cpf, numero, apolice] = await Promise.all([
+            supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>cpf", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>numero", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>apolice", `%${term}%`).order("criado_em", { ascending: false }),
+          ])
+          resultados = [
+            ...(cpf.data || []),
+            ...(numero.data || []),
+            ...(apolice.data || []),
+          ]
+        }
+        
+        // Fallback se não encontrou nada
+        if (resultados.length === 0) {
+          debug = 'fallback';
+          const [nome, cpf, placa, numero, apolice] = await Promise.all([
+            supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>nome", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->segurado->>cpf", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->veiculo->>placa", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>numero", `%${term}%`).order("criado_em", { ascending: false }),
+            supabase.from("ocr_processamento").select("*").ilike("resultado->proposta->>apolice", `%${term}%`).order("criado_em", { ascending: false }),
+          ])
+          resultados = [
+            ...(nome.data || []),
+            ...(cpf.data || []),
+            ...(placa.data || []),
+            ...(numero.data || []),
+            ...(apolice.data || []),
+          ]
+        }
+        
+        // Remover duplicados por id
+        const vistos = new Set()
+        const unicos = resultados.filter((item: any) => {
+          if (vistos.has(item.id)) return false
+          vistos.add(item.id)
+          return true
+        })
+        
+        const resultadosNormalizados = unicos.map((proposta: any) => normalizarProposta(proposta));
+        
+        // Mostrar resultado básico imediatamente
+        if (resultadosNormalizados.length > 0) {
+          setPropostasFiltradas(resultadosNormalizados);
+          setVisibleCount(Math.min(6, resultadosNormalizados.length));
+          setIsLoading(false);
+        }
+        
+        // Em vez de atualizar diretamente, atualizar o cache
+        setCachedPropostas(resultadosNormalizados);
+        setCachedFilteredPropostas(resultadosNormalizados);
+        
+        // Para buscas com poucos resultados, podemos marcar como pronto imediatamente
+        if (resultadosNormalizados.length <= 6) {
+          setDocumentsReady(true);
+        }
+        
+        // Log para debug
+        console.log(`[BUSCA] termo: '${term}' | modo: ${debug} | encontrados: ${unicos.length}`);
+      } catch (error) {
+        console.error("Erro na busca:", error);
+        setDocumentsReady(true); // Em caso de erro, mostrar o que temos
+        setIsLoading(false);
+      }
+    };
+    
+    buscar();
+  }, [debouncedSearchTerm, propostas]);
+
+  // Modificar o fetchByTab para usar o cache também
+  useEffect(() => {
+    const fetchByTab = async () => {
+      setIsLoading(true);
+      
+      try {
+        // 1. Buscar documentos por tipo (dependendo da aba)
+        let query = supabase.from("ocr_processamento").select("*").order("criado_em", { ascending: false }).limit(30)
+        if (tab === "propostas") {
+          query = query.eq("tipo_documento", "proposta")
+        } else if (tab === "apolices") {
+          query = query.eq("tipo_documento", "apolice")
+        } else if (tab === "endossos") {
+          query = query.eq("tipo_documento", "endosso")
+        } else if (tab === "cancelados") {
+          query = query.eq("tipo_documento", "cancelado")
+        }
+        
+        const { data, error } = await query
+        if (error) {
+          console.error("Erro ao buscar documentos:", error)
+          return
+        }
+        
+        if (!data || data.length === 0) {
+          setPropostas([])
+          setCachedPropostas([]);
+          setCachedFilteredPropostas([]);
+          setDocumentsReady(true);
+          setIsLoading(false)
+          return
+        }
+        
+        // 2. Normalizar os documentos
+        const propostasNormalizadas = data.map((proposta: any) => normalizarProposta(proposta))
+        
+        // 3. Buscar os dados financeiros para cada documento
+        const propostasComParcelas = await Promise.all(
+          propostasNormalizadas.map(async (doc) => {
+            try {
+              // 3.1 Buscar os dados financeiros
+              const { data: dadosFinanceiros } = await supabase
+                .from("dados_financeiros")
+                .select("*")
+                .eq("documento_id", doc.id)
+                .single();
+                
+              if (!dadosFinanceiros) return doc;
+              
+              // 3.2 Buscar as parcelas
+              const { data: parcelas } = await supabase
+                .from("parcelas_pagamento")
+                .select("*")
+                .eq("dados_financeiros_id", dadosFinanceiros.id)
+                .order("numero_parcela", { ascending: true });
+                
+              if (!parcelas || parcelas.length === 0) return doc;
+              
+              // 3.3 Determinar a próxima parcela a ser exibida
+              let proximaParcela = null;
+              
+              if (doc.tipo_documento === "proposta") {
+                // Para propostas, mostrar a primeira parcela (parcela de entrada)
+                proximaParcela = parcelas[0];
+              } else {
+                // Para apólices, endossos ou cancelados, mostrar a parcela posterior à última paga
+                const parcelasPagas = parcelas.filter(p => p.status === "pago");
+                const ultimaParcelaPaga = parcelasPagas.length > 0 
+                  ? parcelasPagas.sort((a, b) => b.numero_parcela - a.numero_parcela)[0] 
+                  : null;
+                
+                if (ultimaParcelaPaga) {
+                  // Encontrar a próxima parcela após a última paga
+                  proximaParcela = parcelas.find(p => p.numero_parcela > ultimaParcelaPaga.numero_parcela) || parcelas[0];
+                } else {
+                  // Se nenhuma parcela foi paga, mostrar a primeira
+                  proximaParcela = parcelas[0];
+                }
+              }
+              
+              // 3.4 Atualizar o documento com as informações de parcelas e total de parcelas
+              return {
+                ...doc,
+                parcelas: {
+                  formaPagamento: dadosFinanceiros.forma_pagamento,
+                  totalParcelas: parcelas.length, // Adicionar o total de parcelas diretamente
+                  proximaParcela: proximaParcela ? {
+                    numero: proximaParcela.numero_parcela,
+                    valor: proximaParcela.valor,
+                    data_vencimento: proximaParcela.data_vencimento,
+                    status: proximaParcela.status
+                  } : null
+                }
+              };
+            } catch (error) {
+              console.error(`Erro ao buscar parcelas para documento ${doc.id}:`, error);
+              return doc;
+            }
+          })
+        );
+        
+        // 4. Ordenar os documentos por vencimento da parcela
+        const docsOrdenados = ordenarDocumentos(propostasComParcelas);
+        
+        // No final, depois de processar os dados:
+        setDocumentsReady(false); // Marcar como não pronto 
+        setCachedPropostas(docsOrdenados);
+        setCachedFilteredPropostas(docsOrdenados);
+        
+        // Atualizar também as propostas originais
+        setPropostas(docsOrdenados);
+        
+      } catch (err) {
+        console.error("Erro ao processar dados:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    // Executar ao mudar de aba
+    fetchByTab();
+  }, [tab]);
 
   return (
     <ProtectedRoute>
@@ -2038,6 +2460,12 @@ export default function PropostasPage() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
+                  {/* Adicionar indicador de digitando/buscando */}
+                  {searchTerm !== debouncedSearchTerm && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      <span className="text-xs text-primary animate-pulse">Digitando...</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button 
@@ -2253,8 +2681,16 @@ export default function PropostasPage() {
                         transition={{ duration: 0.3 }}
                         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 cards-container"
                       >
+                        {/* Mostrar um indicador de pré-carregamento se o cache estiver sendo construído */}
+                        {isCaching && !documentsReady && (
+                          <div className="col-span-full flex flex-col items-center py-8 text-primary">
+                            <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                            <p className="text-sm">Otimizando dados para melhor experiência...</p>
+                          </div>
+                        )}
+                        
                         {/* Mostrar apenas o número de itens definidos em visibleCount */}
-                        {propostasFiltradas.slice(0, visibleCount).map((proposta, idx) => (
+                        {documentsReady && propostasFiltradas.slice(0, visibleCount).map((proposta, idx) => (
                           <motion.div
                             key={`${proposta.id}-${idx}`}
                             initial={{ opacity: 0, y: 20 }}
